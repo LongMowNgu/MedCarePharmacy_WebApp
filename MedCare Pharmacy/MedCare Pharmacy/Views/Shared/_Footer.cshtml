@@ -1,0 +1,27 @@
+﻿<footer>
+    <div>
+        <div class="logo"><span>✚</span> MedCare</div>
+        <p>Nhà thuốc trực tuyến — giao diện hệ thống quản lý dược phẩm.</p>
+        <p style="margin-top:10px">
+            <a asp-controller="Customer" asp-action="Login">Đăng nhập</a> ·
+            <a asp-controller="Customer" asp-action="Products">Sản phẩm</a> ·
+            <a asp-controller="Customer" asp-action="Orders">Đơn hàng</a>
+        </p>
+    </div>
+    <div>
+        <h3>Hỗ trợ</h3>
+        <p>Chính sách giao hàng</p>
+        <p>Hướng dẫn mua hàng</p>
+        <p>Chính sách đổi trả</p>
+        <p><a asp-controller="Customer" asp-action="Consultation">Tư vấn với dược sĩ</a></p>
+    </div>
+    <div>
+        <h3>Liên hệ</h3>
+        <p>Hotline: 1800 0000</p>
+        <p>Email: support@medcare.vn</p>
+        <p style="margin-top:12px">
+            <a asp-controller="Customer" asp-action="Login" asp-route-role="pharmacist">Khu vực Dược sĩ</a><br>
+            <a asp-controller="Customer" asp-action="Login" asp-route-role="admin">Khu vực Quản trị</a>
+        </p>
+    </div>
+</footer>
