@@ -2,20 +2,19 @@
    pharmacy.js — Logic khu vực Dược sĩ
    ============================================================ */
 
-/* ---------- POS ---------- */
+/* ---------- POS (đã chuyển sang API Products + Orders/pos) ---------- */
 let posInvoice = [];
+let posProductsCache = [];   // danh sách thuốc từ API
 
-function initPos() {
+function initPosPage() {
     const gridEl = document.getElementById("posGrid");
     if (!gridEl) return;
-    renderPosGrid(DEMO_PRODUCTS);
-    renderInvoice();
 
     document.getElementById("posSearch").addEventListener("input", (e) => {
         const kw = e.target.value.trim().toLowerCase();
-        const data = DEMO_PRODUCTS.filter(p =>
-            p.name.toLowerCase().includes(kw) ||
-            (p.active || "").toLowerCase().includes(kw)
+        const data = posProductsCache.filter(p =>
+            (p.name || "").toLowerCase().includes(kw) ||
+            (p.activeIngredient || "").toLowerCase().includes(kw)
         );
         renderPosGrid(data);
     });
@@ -23,28 +22,84 @@ function initPos() {
     document.getElementById("btnCheckout").onclick = doPosCheckout;
     document.getElementById("btnClearInvoice").onclick = () => {
         if (!posInvoice.length) return;
-        if (confirm("Xóa toàn bộ hóa đơn?")) { posInvoice = []; renderInvoice(); }
+        if (confirm("Xóa toàn bộ hóa đơn?")) {
+            posInvoice = [];
+            renderInvoice();
+        }
     };
+
+    loadPosProducts();
+}
+
+// Alias để tương thích nếu chỗ khác còn gọi initPos()
+function initPos() {
+    initPosPage();
+}
+
+async function loadPosProducts() {
+    const gridEl = document.getElementById("posGrid");
+    if (!gridEl) return;
+    gridEl.innerHTML = `<p class="empty">Đang tải sản phẩm...</p>`;
+
+    try {
+        const products = await apiGet(API.PRODUCTS);
+        posProductsCache = Array.isArray(products) ? products : [];
+        renderPosGrid(posProductsCache);
+        renderInvoice();
+    } catch (err) {
+        gridEl.innerHTML = `<p class="empty">Lỗi tải sản phẩm: ${escapeHtml(err.message || "Không xác định")}</p>`;
+        showToast(err.message || "Không tải được danh sách thuốc", "error");
+    }
 }
 
 function renderPosGrid(data) {
     const gridEl = document.getElementById("posGrid");
-    gridEl.innerHTML = data.map(p => `
-        <div class="pos-card" onclick="posAdd(${p.id})">
-            <div class="ic">${p.icon}</div>
+    if (!gridEl) return;
+
+    if (!data || !data.length) {
+        gridEl.innerHTML = `<p class="empty">Không có sản phẩm.</p>`;
+        return;
+    }
+
+    gridEl.innerHTML = data.map(p => {
+        const stock = p.stockQuantity != null ? p.stockQuantity : 0;
+        const icon = p.imageUrl || "💊";
+        const disabledCls = stock <= 0 ? " style=\"opacity:0.5;cursor:not-allowed\"" : "";
+        return `
+        <div class="pos-card" onclick="posAdd(${p.id})"${disabledCls}>
+            <div class="ic">${icon}</div>
             <div class="nm">${escapeHtml(p.name)}</div>
             <div class="pr">${formatPrice(p.price)}</div>
-            <div class="st">Tồn: ${p.stock}</div>
-        </div>
-    `).join("");
+            <div class="st">Tồn: ${stock}</div>
+        </div>`;
+    }).join("");
 }
 
 function posAdd(id) {
-    const p = DEMO_PRODUCTS.find(x => x.id === id);
-    if (!p || p.stock === 0) { showToast("Sản phẩm hết hàng", "warn"); return; }
+    const p = posProductsCache.find(x => x.id === id);
+    if (!p) return;
+    const stock = p.stockQuantity != null ? p.stockQuantity : 0;
+    if (stock <= 0) {
+        showToast("Sản phẩm hết hàng", "warn");
+        return;
+    }
+
     const it = posInvoice.find(x => x.id === id);
-    if (it) it.quantity++;
-    else posInvoice.push({ id: p.id, name: p.name, price: p.price, quantity: 1 });
+    if (it) {
+        if (it.quantity >= stock) {
+            showToast("Không đủ tồn kho", "warn");
+            return;
+        }
+        it.quantity++;
+    } else {
+        posInvoice.push({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            quantity: 1,
+            maxStock: stock
+        });
+    }
     renderInvoice();
 }
 
@@ -64,7 +119,7 @@ function renderInvoice() {
                     <div class="text-muted" style="font-size:12px">${formatPrice(i.price)}</div>
                 </div>
                 <div class="q">
-                    <input type="number" min="1" value="${i.quantity}"
+                    <input type="number" min="1" max="${i.maxStock || 999}" value="${i.quantity}"
                            onchange="posQty(${i.id}, this.value)">
                 </div>
                 <button class="rm" onclick="posRemove(${i.id})">✕</button>
@@ -76,164 +131,288 @@ function renderInvoice() {
     const vat = Math.round(subtotal * 0.05);
     const total = subtotal + vat;
 
-    cntEl.textContent = posInvoice.reduce((s, i) => s + i.quantity, 0);
-    totEl.innerHTML = `
-        <div class="row"><span>Tạm tính</span><b>${formatPrice(subtotal)}</b></div>
-        <div class="row"><span>VAT (5%)</span><b>${formatPrice(vat)}</b></div>
-        <div class="row grand"><span>Khách phải trả</span><span>${formatPrice(total)}</span></div>
-    `;
+    if (cntEl) cntEl.textContent = posInvoice.reduce((s, i) => s + i.quantity, 0);
+    if (totEl) {
+        totEl.innerHTML = `
+            <div class="row"><span>Tạm tính</span><b>${formatPrice(subtotal)}</b></div>
+            <div class="row"><span>VAT (5%)</span><b>${formatPrice(vat)}</b></div>
+            <div class="row grand"><span>Khách phải trả</span><span>${formatPrice(total)}</span></div>
+        `;
+    }
 }
 
 window.posQty = (id, v) => {
     const it = posInvoice.find(x => x.id === id);
     if (!it) return;
-    const q = Math.max(1, +v || 1);
+    let q = Math.max(1, +v || 1);
+    if (it.maxStock != null && q > it.maxStock) {
+        q = it.maxStock;
+        showToast("Số lượng không vượt quá tồn kho (" + it.maxStock + ")", "warn");
+    }
     it.quantity = q;
     renderInvoice();
 };
+
 window.posRemove = (id) => {
     posInvoice = posInvoice.filter(x => x.id !== id);
     renderInvoice();
 };
 
 async function doPosCheckout() {
-    if (!posInvoice.length) { showToast("Hóa đơn trống", "error"); return; }
+    if (!posInvoice.length) {
+        showToast("Hóa đơn trống", "error");
+        return;
+    }
+
     const subtotal = posInvoice.reduce((s, i) => s + i.price * i.quantity, 0);
     const total = subtotal + Math.round(subtotal * 0.05);
 
-    try {
-        posInvoice.forEach(i => {
-            const p = DEMO_PRODUCTS.find(x => x.id === i.id);
-            if (p) p.stock = Math.max(0, p.stock - i.quantity);
-        });
+    // Body đúng CreatePosDto của OrdersController
+    const body = {
+        customerName: "Khách vãng lai",
+        phone: "",
+        totalAmount: total,
+        items: posInvoice.map(i => ({
+            productId: i.id,
+            quantity: i.quantity,
+            unitPrice: i.price
+        }))
+    };
 
-        showToast(`Thanh toán thành công ${formatPrice(total)}`);
+    try {
+        // POST api/orders/pos  → backend tự trừ StockQuantity
+        const result = await apiPost(`${API.ORDERS}/pos`, body);
+        showToast(result && result.message
+            ? result.message
+            : `Thanh toán thành công ${formatPrice(total)}`);
+
         posInvoice = [];
         renderInvoice();
-        renderPosGrid(DEMO_PRODUCTS);
+        // Tải lại tồn kho mới từ API
+        await loadPosProducts();
     } catch (err) {
-        showToast(err.message, "error");
+        showToast(err.message || "Lỗi thanh toán POS", "error");
     }
 }
 
-/* ---------- Online Orders ---------- */
-const DEMO_ONLINE_ORDERS = [
-    { id: "MC1001", customer: "Nguyễn Văn A", phone: "0901234567", items: "2× Paracetamol, 1× Vitamin C", total: 110000, createdAt: "2025-01-12T09:30:00", status: "Chờ xử lý", hasRx: true },
-    { id: "MC1002", customer: "Trần Thị B", phone: "0912345678", items: "1× Omega 3", total: 220000, createdAt: "2025-01-12T10:15:00", status: "Đang kiểm tra", hasRx: false },
-    { id: "MC1003", customer: "Lê Văn C", phone: "0938765432", items: "3× Siro ho trẻ em", total: 285000, createdAt: "2025-01-12T11:00:00", status: "Đã duyệt", hasRx: true }
-];
+/* ---------- Online Orders (đã chuyển sang API OrdersController) ---------- */
 
-function initOnlineOrders() {
+// Map trạng thái backend ↔ hiển thị tiếng Việt
+const ORDER_STATUS_LABEL = {
+    "Pending": "Chờ xử lý",
+    "Approved": "Đã duyệt",
+    "Cancelled": "Đã hủy",
+    "Completed": "Đã giao",
+    "Shipping": "Đang giao",
+    "Checking": "Đang kiểm tra"
+};
+const ORDER_STATUS_BADGE = {
+    "Pending": "warn",
+    "Approved": "success",
+    "Cancelled": "danger",
+    "Completed": "success",
+    "Shipping": "info",
+    "Checking": "info"
+};
+
+let onlineOrdersCache = [];   // dữ liệu thô từ API
+
+function initOnlineOrdersPage() {
     const tbody = document.getElementById("ordersBody");
     if (!tbody) return;
-    const orders = LS.get("medcare_online_orders", DEMO_ONLINE_ORDERS);
-    LS.set("medcare_online_orders", orders);
-    renderOrders(orders);
+    loadAndRenderOrders();
+}
+
+// Giữ tên cũ để tương thích nếu chỗ khác còn gọi
+function initOnlineOrders() {
+    initOnlineOrdersPage();
+}
+
+async function loadAndRenderOrders() {
+    const tbody = document.getElementById("ordersBody");
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">Đang tải đơn hàng...</td></tr>`;
+
+    try {
+        // GET api/orders
+        const orders = await apiGet(API.ORDERS);
+        // Chỉ lấy đơn Online (hoặc tất cả nếu muốn xem cả POS)
+        onlineOrdersCache = (Array.isArray(orders) ? orders : [])
+            .filter(o => !o.orderType || o.orderType === "Online");
+        renderOrders(onlineOrdersCache);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty">Lỗi tải đơn: ${escapeHtml(err.message || "Không xác định")}</td></tr>`;
+        showToast(err.message || "Không tải được danh sách đơn hàng", "error");
+    }
 }
 
 function renderOrders(orders) {
     const tbody = document.getElementById("ordersBody");
-    if (!orders.length) {
+    if (!tbody) return;
+
+    if (!orders || !orders.length) {
         tbody.innerHTML = `<tr><td colspan="8" class="empty">Không có đơn hàng.</td></tr>`;
         return;
     }
-    const badgeMap = {
-        "Chờ xử lý": "warn",
-        "Đang kiểm tra": "info",
-        "Đã duyệt": "success",
-        "Đã hủy": "danger",
-        "Đang giao": "info",
-        "Đã giao": "success"
-    };
-    tbody.innerHTML = orders.map((o, idx) => `
+
+    tbody.innerHTML = orders.map(o => {
+        // Tên sản phẩm từ OrderDetails
+        const itemsText = (o.orderDetails && o.orderDetails.length)
+            ? o.orderDetails.map(d => {
+                const name = (d.product && d.product.name) ? d.product.name : ("SP#" + d.productId);
+                return `${d.quantity}× ${name}`;
+            }).join(", ")
+            : "—";
+
+        const hasRx = !!(o.prescriptionUrl);
+        const statusKey = o.status || "Pending";
+        const statusLabel = ORDER_STATUS_LABEL[statusKey] || statusKey;
+        const badgeCls = ORDER_STATUS_BADGE[statusKey] || "muted";
+
+        // Ẩn nút Duyệt/Hủy nếu đã xử lý xong
+        const canAction = statusKey === "Pending" || statusKey === "Checking";
+
+        return `
         <tr>
-            <td><b>#${escapeHtml(o.id)}</b></td>
-            <td>${escapeHtml(o.customer)}<br><span class="text-muted" style="font-size:12px">${escapeHtml(o.phone)}</span></td>
-            <td>${escapeHtml(o.items)}</td>
-            <td>${o.hasRx ? '<span class="badge info">📎 Có</span>' : '<span class="badge muted">Không</span>'}</td>
-            <td>${formatPrice(o.total)}</td>
+            <td><b>#${o.id}</b></td>
+            <td>${escapeHtml(o.customerName || "—")}<br>
+                <span class="text-muted" style="font-size:12px">${escapeHtml(o.phone || "")}</span>
+            </td>
+            <td>${escapeHtml(itemsText)}</td>
+            <td>${hasRx
+                ? '<span class="badge info">📎 Có</span>'
+                : '<span class="badge muted">Không</span>'}
+            </td>
+            <td>${formatPrice(o.totalAmount)}</td>
             <td>${formatDateTime(o.createdAt)}</td>
-            <td><span class="badge ${badgeMap[o.status] || "muted"}">${escapeHtml(o.status)}</span></td>
+            <td><span class="badge ${badgeCls}">${escapeHtml(statusLabel)}</span></td>
             <td>
                 <div class="actions">
-                    ${o.hasRx ? `<button class="btn small ghost" onclick="viewRx(${idx})">Xem ĐT</button>` : ""}
-                    <button class="btn small"        onclick="approveOrder(${idx})">Duyệt</button>
-                    <button class="btn small danger" onclick="cancelOrder(${idx})">Hủy</button>
+                    ${hasRx
+                ? `<button class="btn small ghost" onclick="viewRx(${o.id})">Xem ĐT</button>`
+                : ""}
+                    ${canAction
+                ? `<button class="btn small" onclick="approveOrder(${o.id})">Duyệt</button>
+                           <button class="btn small danger" onclick="cancelOrder(${o.id})">Hủy</button>`
+                : `<span class="text-muted" style="font-size:12px">—</span>`}
                 </div>
             </td>
-        </tr>
-    `).join("");
+        </tr>`;
+    }).join("");
 }
 
-window.viewRx = (idx) => {
-    const list = LS.get("medcare_online_orders", []);
-    const o = list[idx];
+window.viewRx = (orderId) => {
+    const o = onlineOrdersCache.find(x => x.id === orderId);
     if (!o) return;
+
+    const rxContent = o.prescriptionUrl
+        ? (o.prescriptionUrl.startsWith("http") || o.prescriptionUrl.startsWith("/")
+            ? `<img src="${escapeHtml(o.prescriptionUrl)}" alt="Đơn thuốc"
+                   style="max-width:100%;border-radius:8px;border:1px solid #ddd">`
+            : `<div style="text-align:center;padding:30px;background:#f5faf8;border-radius:10px;font-size:60px">🖼️</div>
+               <p class="text-muted mt-8" style="font-size:13px">${escapeHtml(o.prescriptionUrl)}</p>`)
+        : `<div style="text-align:center;padding:30px;background:#f5faf8;border-radius:10px;font-size:60px">🖼️</div>
+           <p class="text-muted mt-8" style="font-size:13px">Không có hình ảnh đơn thuốc.</p>`;
+
     openModal(`
-        <h3>Đơn thuốc — Đơn #${escapeHtml(o.id)}</h3>
-        <div style="text-align:center;padding:30px;background:#f5faf8;border-radius:10px;font-size:60px">
-            🖼️
-        </div>
-        <p class="text-muted mt-8" style="font-size:13px">Hình ảnh đơn thuốc do khách hàng tải lên (demo).</p>
+        <h3>Đơn thuốc — Đơn #${o.id}</h3>
+        ${rxContent}
+        <p class="text-muted mt-8" style="font-size:13px">
+            Khách: ${escapeHtml(o.customerName || "")} — ${escapeHtml(o.phone || "")}
+        </p>
     `, []);
 };
 
-window.approveOrder = (idx) => {
-    const list = LS.get("medcare_online_orders", []);
-    if (!list[idx]) return;
-    list[idx].status = "Đã duyệt";
-    LS.set("medcare_online_orders", list);
-    renderOrders(list);
-    showToast("Đã duyệt đơn " + list[idx].id);
+window.approveOrder = async (orderId) => {
+    if (!confirm("Duyệt đơn hàng #" + orderId + "?")) return;
+    try {
+        // PUT api/orders/{id}/status
+        await apiPut(`${API.ORDERS}/${orderId}/status`, { status: "Approved" });
+        showToast("Đã duyệt đơn #" + orderId);
+        await loadAndRenderOrders();
+    } catch (err) {
+        showToast(err.message || "Lỗi duyệt đơn", "error");
+    }
 };
 
-window.cancelOrder = (idx) => {
-    const list = LS.get("medcare_online_orders", []);
-    if (!list[idx]) return;
-    if (!confirm("Hủy đơn hàng này?")) return;
-    list[idx].status = "Đã hủy";
-    LS.set("medcare_online_orders", list);
-    renderOrders(list);
-    showToast("Đã hủy đơn " + list[idx].id);
+window.cancelOrder = async (orderId) => {
+    if (!confirm("Hủy đơn hàng #" + orderId + "?")) return;
+    try {
+        await apiPut(`${API.ORDERS}/${orderId}/status`, { status: "Cancelled" });
+        showToast("Đã hủy đơn #" + orderId);
+        await loadAndRenderOrders();
+    } catch (err) {
+        showToast(err.message || "Lỗi hủy đơn", "error");
+    }
 };
 
-/* ---------- Inventory Alerts ---------- */
-const DEMO_ALERTS = {
-    nearExpiry: [
-        { name: "Paracetamol 500mg", lot: "LOT001", expiry: "2025-03-10", stock: 40 },
-        { name: "Vitamin C 500mg", lot: "LOT023", expiry: "2025-04-02", stock: 25 }
-    ],
-    expired: [
-        { name: "Siro ho trẻ em", lot: "LOT005", expiry: "2024-12-01", stock: 8 }
-    ],
-    outOfStock: [
-        { name: "Nước rửa tay", stock: 0 }
-    ],
-    lowStock: [
-        { name: "Omega 3", stock: 5 },
-        { name: "Băng cá nhân", stock: 12 }
-    ]
-};
-
-function initInventoryAlerts() {
+/* ---------- Inventory Alerts (đã chuyển sang API inventorybatches/alerts) ---------- */
+function initInventoryAlertPage() {
     const root = document.getElementById("alertRoot");
     if (!root) return;
-    root.innerHTML = `
-        ${alertSection("Cận hạn", "warn", ["Tên thuốc", "Số lô", "Hạn dùng", "Tồn kho"],
-        DEMO_ALERTS.nearExpiry.map(a => [a.name, a.lot, formatDate(a.expiry), a.stock]))}
-        ${alertSection("Đã hết hạn", "danger", ["Tên thuốc", "Số lô", "Hạn dùng", "Tồn kho"],
-            DEMO_ALERTS.expired.map(a => [a.name, a.lot, formatDate(a.expiry), a.stock]))}
-        ${alertSection("Hết hàng", "danger", ["Tên thuốc", "Tồn kho"],
-                DEMO_ALERTS.outOfStock.map(a => [a.name, a.stock]))}
-        ${alertSection("Sắp hết hàng", "warn", ["Tên thuốc", "Tồn kho"],
-                    DEMO_ALERTS.lowStock.map(a => [a.name, a.stock]))}
-    `;
+
+    root.innerHTML = `<div class="panel"><p class="empty">Đang tải cảnh báo kho...</p></div>`;
+    loadAlerts();
+}
+
+// Alias để tương thích nếu chỗ khác còn gọi tên cũ
+function initInventoryAlerts() {
+    initInventoryAlertPage();
+}
+
+async function loadAlerts() {
+    const root = document.getElementById("alertRoot");
+    if (!root) return;
+
+    try {
+        // GET api/inventorybatches/alerts
+        const data = await apiGet(API.INV_ALERTS);
+
+        const nearExpiry = Array.isArray(data.nearExpiry) ? data.nearExpiry : [];
+        const expired = Array.isArray(data.expired) ? data.expired : [];
+        const outOfStock = Array.isArray(data.outOfStock) ? data.outOfStock : [];
+        const lowStock = Array.isArray(data.lowStock) ? data.lowStock : [];
+
+        root.innerHTML = `
+            ${alertSection("Cận hạn (≤ 90 ngày)", "warn",
+            ["Tên thuốc", "Số lô", "Hạn dùng", "Tồn lô"],
+            nearExpiry.map(a => [
+                a.name || "—",
+                a.lot || "—",
+                formatDate(a.expiry),
+                a.stock != null ? a.stock : 0
+            ]))}
+            ${alertSection("Đã hết hạn", "danger",
+                ["Tên thuốc", "Số lô", "Hạn dùng", "Tồn lô"],
+                expired.map(a => [
+                    a.name || "—",
+                    a.lot || "—",
+                    formatDate(a.expiry),
+                    a.stock != null ? a.stock : 0
+                ]))}
+            ${alertSection("Hết hàng", "danger",
+                    ["Tên thuốc", "Tồn kho"],
+                    outOfStock.map(a => [
+                        a.name || "—",
+                        a.stock != null ? a.stock : 0
+                    ]))}
+            ${alertSection("Sắp hết hàng (≤ 20)", "warn",
+                        ["Tên thuốc", "Tồn kho"],
+                        lowStock.map(a => [
+                            a.name || "—",
+                            a.stock != null ? a.stock : 0
+                        ]))}
+        `;
+    } catch (err) {
+        root.innerHTML = `<div class="panel"><p class="empty">Lỗi tải cảnh báo: ${escapeHtml(err.message || "Không xác định")}</p></div>`;
+        showToast(err.message || "Không tải được cảnh báo kho", "error");
+    }
 }
 
 function alertSection(title, cls, cols, rows) {
     const headerRow = cols.map(c => `<th>${c}</th>`).join("");
     const bodyRows = rows.length
-        ? rows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("")
+        ? rows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(String(c))}</td>`).join("")}</tr>`).join("")
         : `<tr><td colspan="${cols.length}" class="empty">Không có dữ liệu</td></tr>`;
 
     return `
@@ -251,21 +430,39 @@ function alertSection(title, cls, cols, rows) {
         </div>
     `;
 }
+/* ---------- Pharmacist Dashboard ---------- */
+async function initPharmacistDashboard() {
+    const root = document.getElementById("dashStats");
+    if (!root) return;
 
+    try {
+        const data = await apiGet(API.REPORT_PHARMA_DASH);
+
+        const set = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+
+        set("stRevenue", formatPrice(data.revenueToday || 0));
+        set("stPosCount", String(data.posCount || 0));
+        set("stOnlineCount", String(data.onlineCount || 0));
+        set("stAlerts", String(data.alerts || 0));
+        set("chatUnread", String(data.chatUnread || 0));
+    } catch (err) {
+        showToast(err.message || "Không tải được thống kê", "error");
+    }
+}
 /* ---------- Auto-detect Page Routes ---------- */
 document.addEventListener("DOMContentLoaded", () => {
     const p = location.pathname.toLowerCase();
-    if (p.includes("/pharmacist/pos")) initPos();
-    if (p.includes("/pharmacist/onlineorders")) initOnlineOrders();
-    if (p.includes("/pharmacist/inventoryalert")) initInventoryAlerts();
 
-    const dash = document.getElementById("dashStats");
-    if (dash && (p.includes("/pharmacist/index") || p === "/pharmacist" || p === "/pharmacist/")) {
-        document.getElementById("stRevenue").textContent = formatPrice(4850000);
-        document.getElementById("stPosCount").textContent = "23";
-        document.getElementById("stOnlineCount").textContent = "6";
-        document.getElementById("stAlerts").textContent = "4";
-    }
+    // const dash = document.getElementById("dashStats");
+    // if (dash && (p.includes("/pharmacist/index") || p === "/pharmacist" || p === "/pharmacist/")) {
+    //     document.getElementById("stRevenue").textContent = formatPrice(4850000);
+    //     document.getElementById("stPosCount").textContent = "23";
+    //     document.getElementById("stOnlineCount").textContent = "6";
+    //     document.getElementById("stAlerts").textContent = "4";
+    // }
 });
 
 /* ---------- Shared modal ---------- */

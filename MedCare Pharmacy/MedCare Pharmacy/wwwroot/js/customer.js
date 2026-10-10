@@ -369,57 +369,91 @@ async function initOrdersPage() {
         showToast(err.message || "Không tải được danh sách đơn hàng", "error");
     }
 }
-/* ---------- prescription.html ---------- */
+/* ---------- prescription.html (API PrescriptionsController) ---------- */
 function initPrescriptionPage() {
     const list = document.getElementById("rxList");
     if (!list) return;
 
-    const items = LS.get("medcare_prescriptions", []);
-    render(items);
+    const user = typeof getCurrentUser === "function" ? getCurrentUser() : null;
+    if (!user) {
+        list.innerHTML = `<p class="empty">Vui lòng <a href="/Customer/Login">đăng nhập</a> để quản lý đơn thuốc.</p>`;
+        return;
+    }
+
+    let itemsCache = [];
+
+    async function loadAndRender() {
+        list.innerHTML = `<p class="empty">Đang tải...</p>`;
+        try {
+            const data = await apiGet(API.PRESCRIPTIONS);
+            itemsCache = Array.isArray(data) ? data : [];
+            render(itemsCache);
+        } catch (err) {
+            list.innerHTML = `<p class="empty">Lỗi: ${escapeHtml(err.message || "Không tải được")}</p>`;
+            showToast(err.message || "Không tải được đơn thuốc", "error");
+        }
+    }
 
     function render(data) {
         if (!data.length) {
             list.innerHTML = `<p class="empty">Chưa có đơn thuốc nào được tải lên.</p>`;
             return;
         }
-        list.innerHTML = data.map((rx, idx) => `
+        list.innerHTML = data.map(rx => `
             <div class="rx-item">
-                <div class="preview">${rx.type === "pdf" ? "📄" : "🖼️"}</div>
-                <div style="font-weight:600">${escapeHtml(rx.name)}</div>
+                <div class="preview">${rx.fileType === "pdf" ? "📄" : "🖼️"}</div>
+                <div style="font-weight:600">
+                    <a href="${escapeHtml(rx.fileUrl)}" target="_blank" rel="noopener">
+                        ${escapeHtml(rx.fileName)}
+                    </a>
+                </div>
                 <div class="text-muted" style="font-size:12px;margin-top:4px">${formatDateTime(rx.uploadedAt)}</div>
                 <button class="btn danger small" style="margin-top:8px"
-                        onclick="removeRx(${idx})">Xóa</button>
+                        onclick="removeRx(${rx.id})">Xóa</button>
             </div>
         `).join("");
     }
 
-    window.removeRx = (idx) => {
-        const cur = LS.get("medcare_prescriptions", []);
-        cur.splice(idx, 1);
-        LS.set("medcare_prescriptions", cur);
-        render(cur);
-        showToast("Đã xóa đơn thuốc");
+    window.removeRx = async (id) => {
+        if (!confirm("Xóa đơn thuốc này?")) return;
+        try {
+            await apiDelete(`${API.PRESCRIPTIONS}/${id}`);
+            showToast("Đã xóa đơn thuốc");
+            await loadAndRender();
+        } catch (err) {
+            showToast(err.message || "Lỗi xóa", "error");
+        }
     };
 
     const input = document.getElementById("rxUpload");
-    input.addEventListener("change", () => {
-        const file = input.files[0];
-        if (!file) return;
-        const ext = (file.name.split(".").pop() || "").toLowerCase();
-        if (!["png", "jpg", "jpeg", "pdf"].includes(ext)) {
-            showToast("Chỉ hỗ trợ PNG, JPG, JPEG, PDF", "error"); return;
-        }
-        const cur = LS.get("medcare_prescriptions", []);
-        cur.unshift({
-            name: file.name,
-            type: ext === "pdf" ? "pdf" : "image",
-            uploadedAt: new Date().toISOString()
+    if (input) {
+        input.addEventListener("change", async () => {
+            const file = input.files[0];
+            if (!file) return;
+
+            const ext = (file.name.split(".").pop() || "").toLowerCase();
+            if (!["png", "jpg", "jpeg", "pdf"].includes(ext)) {
+                showToast("Chỉ hỗ trợ PNG, JPG, JPEG, PDF", "error");
+                input.value = "";
+                return;
+            }
+
+            const form = new FormData();
+            form.append("file", file);
+
+            try {
+                // apiRequest hỗ trợ FormData (đã có trong api.js)
+                await apiPost(API.PRESCRIPTIONS_UPLOAD, form);
+                showToast("Đã tải lên đơn thuốc");
+                await loadAndRender();
+            } catch (err) {
+                showToast(err.message || "Lỗi tải lên", "error");
+            }
+            input.value = "";
         });
-        LS.set("medcare_prescriptions", cur);
-        render(cur);
-        showToast("Đã tải lên đơn thuốc");
-        input.value = "";
-    });
+    }
+
+    loadAndRender();
 }
 
 /* ---------- bootstrap auto-detect page ---------- */

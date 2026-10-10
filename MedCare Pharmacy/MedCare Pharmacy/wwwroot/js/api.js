@@ -82,8 +82,9 @@ const API = {
     ORDERS:        "/orders",
 
     // inventory
-    INV_ALERTS:    "/inventory/alerts",
-    PURCHASE:      "/purchase-orders",
+    INV_ALERTS: "/inventorybatches/alerts",
+    INVENTORY_BATCHES: "/inventorybatches",
+    PURCHASE_IMPORT: "/inventorybatches/import",
 
     // pos
     POS_INVOICES:  "/pos/invoices",
@@ -92,8 +93,17 @@ const API = {
     USERS:         "/users",
 
     // reports
-    REPORT_REVENUE:      "/reports/revenue",
+    REPORT_REVENUE: "/reports/revenue",
     REPORT_BEST_SELLING: "/reports/best-selling",
+    REPORT_DASHBOARD: "/reports/dashboard",
+    REPORT_PHARMA_DASH: "/reports/pharmacist-dashboard",
+    // chat
+    CHAT_CONVERSATIONS: "/chat/conversations",
+    CHAT_MESSAGES: "/chat/messages",
+    CHAT_UNREAD: "/chat/unread",
+    // prescriptions
+    PRESCRIPTIONS: "/prescriptions",
+    PRESCRIPTIONS_UPLOAD: "/prescriptions/upload",
 };
 
 /* ---------------- Demo helper ----------------
