@@ -7,124 +7,173 @@ function initProductsPage() {
     const listEl = document.getElementById("productList");
     if (!listEl) return;
 
-    const q = getQuery("q").toLowerCase();
+    const q = getQuery("q");
     const catParam = getQuery("cat");
 
     const state = {
         keyword: q,
         category: catParam,
-        prices: [],
         sort: "default"
     };
 
     const $kw = document.getElementById("filterKeyword");
     if ($kw) $kw.value = q;
 
-    // đánh dấu category đang chọn
+    // đánh dấu category đang chọn (nếu có checkbox filter)
     document.querySelectorAll("input[name='cat']").forEach(el => {
         if (el.value === catParam) el.checked = true;
-    });
-    document.querySelectorAll("input[name='price']").forEach(el => {
-        el.addEventListener("change", () => {
-            state.prices = [...document.querySelectorAll("input[name='price']:checked")]
-                .map(x => x.value);
-            render();
-        });
     });
     document.querySelectorAll("input[name='cat']").forEach(el => {
         el.addEventListener("change", () => {
             state.category = el.checked ? el.value : "";
-            render();
+            loadAndRender();
         });
     });
-    if ($kw) $kw.addEventListener("input", () => { state.keyword = $kw.value.trim().toLowerCase(); render(); });
+    if ($kw) {
+        $kw.addEventListener("input", () => {
+            state.keyword = $kw.value.trim();
+            loadAndRender();
+        });
+    }
     const sortEl = document.getElementById("sortSelect");
-    if (sortEl) sortEl.addEventListener("change", () => { state.sort = sortEl.value; render(); });
-
-    function matchPrice(p) {
-        if (!state.prices.length) return true;
-        return state.prices.some(r => {
-            if (r === "low") return p.price < 100000;
-            if (r === "mid") return p.price >= 100000 && p.price <= 500000;
-            if (r === "high") return p.price > 500000;
-            return true;
+    if (sortEl) {
+        sortEl.addEventListener("change", () => {
+            state.sort = sortEl.value;
+            loadAndRender();
         });
     }
 
-    function render() {
-        let data = DEMO_PRODUCTS.filter(p => {
-            const okKw = !state.keyword ||
-                p.name.toLowerCase().includes(state.keyword) ||
-                (p.active || "").toLowerCase().includes(state.keyword);
-            const okCat = !state.category || p.category === state.category;
-            return okKw && okCat && matchPrice(p);
-        });
+    async function loadAndRender() {
+        listEl.innerHTML = `<p class="empty">Đang tải sản phẩm...</p>`;
 
-        if (state.sort === "low") data.sort((a, b) => a.price - b.price);
-        if (state.sort === "high") data.sort((a, b) => b.price - a.price);
-        if (state.sort === "rating") data.sort((a, b) => b.rating - a.rating);
+        try {
+            // Gọi API ProductsController.GetAll
+            // Endpoint: GET /api/products?q=...&cat=...&sort=...
+            let endpoint = API.PRODUCTS + "?";
+            if (state.keyword) endpoint += `q=${encodeURIComponent(state.keyword)}&`;
+            if (state.category) endpoint += `cat=${encodeURIComponent(state.category)}&`;
+            if (state.sort && state.sort !== "default") endpoint += `sort=${encodeURIComponent(state.sort)}&`;
 
-        if (!data.length) {
-            listEl.innerHTML = `<p class="empty">Không tìm thấy sản phẩm phù hợp.</p>`;
-            return;
+            const products = await apiGet(endpoint);
+
+            if (!products || !products.length) {
+                listEl.innerHTML = `<p class="empty">Không tìm thấy sản phẩm phù hợp.</p>`;
+                return;
+            }
+
+            // Ánh xạ field từ API (Product entity) sang format giao diện
+            listEl.innerHTML = products.map(p => {
+                const categoryName = (p.category && p.category.name) ? p.category.name : (p.category || "—");
+                const active = p.activeIngredient || "—";
+                const stock = p.stockQuantity != null ? p.stockQuantity : 0;
+                const icon = p.imageUrl || "💊";
+                const unit = p.unit || "Hộp";
+
+                return `
+                <article class="product">
+                    <div class="product-image">${icon}</div>
+                    <div class="product-body">
+                        <span class="product-category">${escapeHtml(categoryName)}</span>
+                        <h3>${escapeHtml(p.name)}</h3>
+                        <div class="rating">HC: ${escapeHtml(active)}</div>
+                        <div class="price">${formatPrice(p.price)}</div>
+                        <div class="text-muted" style="font-size:12px;margin-bottom:8px">
+                            Tồn kho: ${stock > 0 ? stock + " " + unit : "Hết hàng"}
+                        </div>
+                        <div style="display:flex;gap:6px">
+                            <a class="btn ghost small" style="flex:1;text-align:center;text-decoration:none"
+                               href="/Customer/ProductDetail?id=${p.id}">Xem</a>
+                            <button class="add-cart" style="flex:1"
+                                    onclick="addToCartFromApi(${p.id}, '${escapeHtml(p.name).replace(/'/g, "\\'")}', ${p.price}, '${escapeHtml(unit)}', '${icon}', ${stock})"
+                                    ${stock === 0 ? "disabled" : ""}>
+                                ${stock === 0 ? "Hết hàng" : "Thêm giỏ"}
+                            </button>
+                        </div>
+                    </div>
+                </article>`;
+            }).join("");
+        } catch (err) {
+            listEl.innerHTML = `<p class="empty">Lỗi tải sản phẩm: ${escapeHtml(err.message || "Không xác định")}</p>`;
+            showToast(err.message || "Không tải được danh sách sản phẩm", "error");
         }
-        listEl.innerHTML = data.map(p => `
-            <article class="product">
-                <div class="product-image">${p.icon}</div>
-                <div class="product-body">
-                    <span class="product-category">${escapeHtml(p.category)}</span>
-                    <h3>${escapeHtml(p.name)}</h3>
-                    <div class="rating">★ ${p.rating} · HC: ${escapeHtml(p.active || "—")}</div>
-                    <div class="price">${formatPrice(p.price)}</div>
-                    <div class="text-muted" style="font-size:12px;margin-bottom:8px">
-                        Tồn kho: ${p.stock > 0 ? p.stock : "Hết hàng"}
-                    </div>
-                    <div style="display:flex;gap:6px">
-                        <a class="btn ghost small" style="flex:1;text-align:center;text-decoration:none"
-                           href="product-detail.html?id=${p.id}">Xem</a>
-                        <button class="add-cart" style="flex:1"
-                                onclick="addToCart(${p.id})"
-                                ${p.stock === 0 ? "disabled" : ""}>
-                            ${p.stock === 0 ? "Hết hàng" : "Thêm giỏ"}
-                        </button>
-                    </div>
-                </div>
-            </article>
-        `).join("");
     }
-    render();
+
+    loadAndRender();
 }
 
+/* Hàm phụ: thêm vào giỏ từ dữ liệu API (tạm thời vẫn dùng localStorage của cart.js) */
+function addToCartFromApi(id, name, price, unit, icon, stock) {
+    if (stock <= 0) {
+        showToast("Sản phẩm hết hàng", "warn");
+        return;
+    }
+    const cart = getCart();
+    const item = cart.find(x => x.id === id);
+    if (item) item.quantity += 1;
+    else cart.push({ id, name, price, icon, unit, quantity: 1 });
+    saveCart(cart);
+    showToast(`Đã thêm "${name}" vào giỏ hàng`);
+}
 /* ---------- product-detail.html ---------- */
-function initProductDetailPage() {
+async function initProductDetailPage() {
     const box = document.getElementById("pdBox");
     if (!box) return;
 
-    const id = Number(getQuery("id") || 1);
-    const p = DEMO_PRODUCTS.find(x => x.id === id) || DEMO_PRODUCTS[0];
+    const id = Number(getQuery("id") || 0);
+    if (!id) {
+        showToast("Không tìm thấy sản phẩm", "error");
+        return;
+    }
 
-    document.getElementById("pdIcon").textContent = p.icon;
-    document.getElementById("pdName").textContent = p.name;
-    document.getElementById("pdCat").textContent = p.category;
-    document.getElementById("pdActive").textContent = p.active || "—";
-    document.getElementById("pdPrice").textContent = formatPrice(p.price);
-    document.getElementById("pdStock").textContent = p.stock > 0 ? `${p.stock} ${p.unit || ""}` : "Hết hàng";
-    document.getElementById("pdDesc").textContent = p.desc || "Đang cập nhật mô tả.";
-    document.getElementById("pdUnit").textContent = p.unit || "Hộp";
-    document.getElementById("pdSupplier").textContent = p.supplier || "—";
+    try {
+        // Gọi API ProductsController.GetById
+        const p = await apiGet(`${API.PRODUCTS}/${id}`);
 
-    const qtyInput = document.getElementById("pdQty");
-    const btnMinus = document.getElementById("pdMinus");
-    const btnPlus = document.getElementById("pdPlus");
-    const btnAdd = document.getElementById("pdAdd");
-    const btnBuy = document.getElementById("pdBuy");
+        const categoryName = (p.category && p.category.name) ? p.category.name : "—";
+        const active = p.activeIngredient || "—";
+        const stock = p.stockQuantity != null ? p.stockQuantity : 0;
+        const icon = p.imageUrl || "💊";
+        const unit = p.unit || "Hộp";
+        const supplierName = (p.supplier && p.supplier.name) ? p.supplier.name : "—";
+        const desc = p.description || "Đang cập nhật mô tả.";
 
-    btnMinus.onclick = () => { qtyInput.value = Math.max(1, +qtyInput.value - 1); };
-    btnPlus.onclick = () => { qtyInput.value = +qtyInput.value + 1; };
-    btnAdd.onclick = () => addToCart(p.id, +qtyInput.value || 1);
-    btnBuy.onclick = () => { addToCart(p.id, +qtyInput.value || 1); setTimeout(() => location.href = "/Customer/Cart", 300); };
+        document.getElementById("pdIcon").textContent = icon;
+        document.getElementById("pdName").textContent = p.name;
+        document.getElementById("pdCat").textContent = categoryName;
+        document.getElementById("pdActive").textContent = active;
+        document.getElementById("pdPrice").textContent = formatPrice(p.price);
+        document.getElementById("pdStock").textContent = stock > 0 ? `${stock} ${unit}` : "Hết hàng";
+        document.getElementById("pdDesc").textContent = desc;
+        document.getElementById("pdUnit").textContent = unit;
+        document.getElementById("pdSupplier").textContent = supplierName;
+
+        const qtyInput = document.getElementById("pdQty");
+        const btnMinus = document.getElementById("pdMinus");
+        const btnPlus = document.getElementById("pdPlus");
+        const btnAdd = document.getElementById("pdAdd");
+        const btnBuy = document.getElementById("pdBuy");
+
+        if (btnMinus) btnMinus.onclick = () => { qtyInput.value = Math.max(1, +qtyInput.value - 1); };
+        if (btnPlus) btnPlus.onclick = () => { qtyInput.value = +qtyInput.value + 1; };
+
+        if (btnAdd) {
+            btnAdd.onclick = () => {
+                addToCartFromApi(p.id, p.name, p.price, unit, icon, stock);
+            };
+            if (stock === 0) btnAdd.disabled = true;
+        }
+        if (btnBuy) {
+            btnBuy.onclick = () => {
+                addToCartFromApi(p.id, p.name, p.price, unit, icon, stock);
+                setTimeout(() => location.href = "/Customer/Cart", 300);
+            };
+            if (stock === 0) btnBuy.disabled = true;
+        }
+    } catch (err) {
+        showToast(err.message || "Không tải được chi tiết sản phẩm", "error");
+        box.innerHTML = `<p class="empty">Không tìm thấy sản phẩm. <a href="/Customer/Products">Quay lại danh sách</a></p>`;
+    }
 }
-
 /* ---------- cart.html ---------- */
 function initCartPage() {
     const wrap = document.getElementById("cartWrap");
@@ -211,77 +260,115 @@ function initCheckoutPage() {
         const data = Object.fromEntries(new FormData(form));
 
         if (!data.name || !data.phone || !data.address || !data.city) {
-            showToast("Vui lòng nhập đủ thông tin giao hàng", "error"); return;
+            showToast("Vui lòng nhập đủ thông tin giao hàng", "error");
+            return;
         }
         if (!/^[0-9+\-\s()]{8,15}$/.test(data.phone)) {
-            showToast("Số điện thoại không hợp lệ", "error"); return;
+            showToast("Số điện thoại không hợp lệ", "error");
+            return;
         }
-        if (!cart.length) { showToast("Giỏ hàng trống", "error"); return; }
+        if (!cart.length) {
+            showToast("Giỏ hàng trống", "error");
+            return;
+        }
 
-        /* Backend thật:
-        const fd = new FormData();
-        Object.entries(data).forEach(([k, v]) => fd.append(k, v));
-        if (fileInput.files[0]) fd.append("prescription", fileInput.files[0]);
-        await apiPost(API.ORDERS, fd);
-        */
+        // Lấy UserId nếu đã đăng nhập
+        const currentUser = getCurrentUser();
+        const userId = currentUser && currentUser.id ? currentUser.id : null;
 
-        // Demo: lưu đơn vào localStorage
-        const orders = LS.get("medcare_orders", []);
-        orders.unshift({
-            id: "MC" + Date.now().toString().slice(-6),
-            createdAt: new Date().toISOString(),
-            customer: data,
-            items: cart,
-            total: t.total,
-            status: "Chờ xử lý",
-            hasPrescription: !!fileInput.files[0]
-        });
-        LS.set("medcare_orders", orders);
-        clearCart();
+        // Ghép địa chỉ + thành phố
+        const fullAddress = `${data.address}, ${data.city}`;
 
-        showToast("Đặt hàng thành công!");
-        setTimeout(() => location.href = "/Customer/Orders", 600);
+        // Chuẩn bị Items đúng format CreateOrderDto
+        const items = cart.map(i => ({
+            productId: i.id,
+            quantity: i.quantity,
+            unitPrice: i.price
+        }));
+
+        // Body gửi lên API (khớp CreateOrderDto của OrdersController)
+        const body = {
+            userId: userId,
+            customerName: data.name.trim(),
+            phone: data.phone.trim(),
+            address: fullAddress,
+            prescriptionUrl: null,          // Tạm thời chưa upload file
+            totalAmount: t.total,
+            items: items
+        };
+
+        try {
+            // Gọi API OrdersController.CreateOrder
+            const result = await apiPost(API.ORDERS, body);
+
+            clearCart();
+            showToast(result.message || "Đặt hàng thành công!");
+            setTimeout(() => location.href = "/Customer/Orders", 600);
+        } catch (err) {
+            showToast(err.message || "Đặt hàng thất bại", "error");
+        }
     });
+
 }
 
 /* ---------- orders.html ---------- */
-function initOrdersPage() {
+async function initOrdersPage() {
     const wrap = document.getElementById("ordersWrap");
     if (!wrap) return;
 
-    const orders = LS.get("medcare_orders", []);
-    if (!orders.length) {
-        wrap.innerHTML = `<p class="empty">Bạn chưa có đơn hàng nào. <a href="products.html">Mua sắm ngay</a></p>`;
+    const currentUser = getCurrentUser();
+    if (!currentUser || !currentUser.id) {
+        wrap.innerHTML = `<p class="empty">Vui lòng <a href="/Customer/Login">đăng nhập</a> để xem đơn hàng của bạn.</p>`;
         return;
     }
-    const badgeMap = {
-        "Chờ xử lý": "warn",
-        "Đang kiểm tra": "info",
-        "Đã duyệt": "info",
-        "Đang giao": "info",
-        "Đã giao": "success",
-        "Đã hủy": "danger"
-    };
-    wrap.innerHTML = orders.map(o => `
-        <div class="order-card">
-            <div class="head">
-                <div>
-                    <div class="code">#${escapeHtml(o.id)}</div>
-                    <div class="text-muted" style="font-size:13px">${formatDateTime(o.createdAt)}</div>
-                </div>
-                <span class="badge ${badgeMap[o.status] || "muted"}">${escapeHtml(o.status)}</span>
-            </div>
-            <div class="items">
-                ${o.items.map(i => `${i.quantity}× ${escapeHtml(i.name)}`).join(" · ")}
-            </div>
-            <div class="foot">
-                <span class="text-muted">${o.hasPrescription ? "📎 Có đơn thuốc" : "Không có đơn thuốc"}</span>
-                <span class="total">${formatPrice(o.total)}</span>
-            </div>
-        </div>
-    `).join("");
-}
 
+    wrap.innerHTML = `<p class="empty">Đang tải đơn hàng...</p>`;
+
+    // Ánh xạ status backend → tiếng Việt + badge
+    const statusMap = {
+        "Pending": { text: "Chờ xử lý", badge: "warn" },
+        "Approved": { text: "Đã duyệt", badge: "info" },
+        "Cancelled": { text: "Đã hủy", badge: "danger" },
+        "Completed": { text: "Đã giao", badge: "success" }
+    };
+
+    try {
+        // Gọi API mới: GET /api/orders/by-user?userId=...
+        const orders = await apiGet(`${API.ORDERS}/by-user?userId=${currentUser.id}`);
+
+        if (!orders || !orders.length) {
+            wrap.innerHTML = `<p class="empty">Bạn chưa có đơn hàng nào. <a href="/Customer/Products">Mua sắm ngay</a></p>`;
+            return;
+        }
+
+        wrap.innerHTML = orders.map(o => {
+            const st = statusMap[o.status] || { text: o.status || "—", badge: "muted" };
+            const itemsText = (o.orderDetails || []).map(d => {
+                const name = (d.product && d.product.name) ? d.product.name : `SP #${d.productId}`;
+                return `${d.quantity}× ${escapeHtml(name)}`;
+            }).join(" · ") || "—";
+
+            return `
+            <div class="order-card">
+                <div class="head">
+                    <div>
+                        <div class="code">#${o.id}</div>
+                        <div class="text-muted" style="font-size:13px">${formatDateTime(o.createdAt)}</div>
+                    </div>
+                    <span class="badge ${st.badge}">${escapeHtml(st.text)}</span>
+                </div>
+                <div class="items">${itemsText}</div>
+                <div class="foot">
+                    <span class="text-muted">${o.prescriptionUrl ? "📎 Có đơn thuốc" : "Không có đơn thuốc"}</span>
+                    <span class="total">${formatPrice(o.totalAmount)}</span>
+                </div>
+            </div>`;
+        }).join("");
+    } catch (err) {
+        wrap.innerHTML = `<p class="empty">Lỗi tải đơn hàng: ${escapeHtml(err.message || "Không xác định")}</p>`;
+        showToast(err.message || "Không tải được danh sách đơn hàng", "error");
+    }
+}
 /* ---------- prescription.html ---------- */
 function initPrescriptionPage() {
     const list = document.getElementById("rxList");

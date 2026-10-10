@@ -145,11 +145,14 @@ async function handleLoginSubmit(e) {
     }
 
     try {
-        // Suy role theo email (dùng cho demo)
-        let actualRole = "customer";
-        if (email.startsWith("admin")) actualRole = "admin";
-        else if (email.startsWith("pharma")) actualRole = "pharmacist";
+        // Gọi API AuthController.Login
+        const data = await apiPost(API.AUTH_LOGIN, { email, password });
 
+        // data = { token, user: { id, fullName, email, phone, role, status } }
+        const user = data.user;
+        const actualRole = (user.role || "customer").toLowerCase();
+
+        // Kiểm tra quyền theo ?role= trên URL
         const isAllowed =
             requiredRole === "customer" ||
             actualRole === requiredRole ||
@@ -166,9 +169,19 @@ async function handleLoginSubmit(e) {
             return;
         }
 
-        saveAuth({ name: email.split("@")[0] || "Người dùng", email, role: actualRole });
+        // Lưu token + user (đúng format AuthController trả về)
+        saveAuth(
+            {
+                id: user.id,
+                name: user.fullName || user.email,
+                email: user.email,
+                phone: user.phone,
+                role: actualRole
+            },
+            data.token
+        );
 
-        // Điều hướng theo ASP.NET Core MVC Routes
+        // Điều hướng theo role (giữ nguyên logic cũ)
         if (actualRole === "admin") {
             showToast("Đăng nhập Quản trị thành công");
             setTimeout(() => location.href = "/Admin/Index", 600);
@@ -184,7 +197,6 @@ async function handleLoginSubmit(e) {
         showToast(err.message || "Đăng nhập thất bại", "error");
     }
 }
-
 /* ----------------- Đăng ký ----------------- */
 async function handleRegisterSubmit(e) {
     e.preventDefault();
@@ -202,6 +214,15 @@ async function handleRegisterSubmit(e) {
     if (pass !== pass2) { showToast("Mật khẩu xác nhận không khớp", "error"); return; }
 
     try {
+        // Gọi API AuthController.Register
+        // DTO backend: RegisterDto(string FullName, string Phone, string Email, string Password)
+        await apiPost(API.AUTH_REGISTER, {
+            fullName: name,
+            phone: phone,
+            email: email,
+            password: pass
+        });
+
         showToast("Đăng ký thành công, hãy đăng nhập");
         setTimeout(() => location.href = "/Customer/Login", 700);
     } catch (err) {

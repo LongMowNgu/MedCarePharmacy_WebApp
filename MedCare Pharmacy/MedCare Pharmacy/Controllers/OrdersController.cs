@@ -123,6 +123,24 @@ namespace MedCare_Pharmacy.Controllers
 
             return Ok(new { success = true, message = "Đã cập nhật trạng thái đơn hàng!" });
         }
+        // GET: api/orders/by-user?userId=5  (Khách hàng xem đơn của mình)
+        [HttpGet("by-user")]
+        public async Task<IActionResult> GetByUser([FromQuery] int? userId)
+        {
+            if (userId == null || userId <= 0)
+            {
+                return BadRequest(new { message = "Thiếu userId" });
+            }
+
+            var orders = await _context.Orders
+                .Include(o => o.OrderDetails)
+                .ThenInclude(d => d.Product)
+                .Where(o => o.UserId == userId)
+                .OrderByDescending(o => o.CreatedAt)
+                .ToListAsync();
+
+            return Ok(orders);
+        }
     }
 
     public record CreateOrderDto(int? UserId, string CustomerName, string Phone, string Address, string? PrescriptionUrl, decimal TotalAmount, List<OrderItemDto> Items);

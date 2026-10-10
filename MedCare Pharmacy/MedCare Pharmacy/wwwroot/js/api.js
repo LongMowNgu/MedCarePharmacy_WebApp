@@ -4,7 +4,7 @@
    admin.js) đều gọi qua các hàm dưới đây, không hard-code URL.
    ============================================================ */
 
-const API_BASE_URL = "https://localhost:7000/api";
+const API_BASE_URL = "/api";
 
 /* ------- Lấy token đăng nhập (nếu có) để gắn vào header ------- */
 function getAuthToken() {
