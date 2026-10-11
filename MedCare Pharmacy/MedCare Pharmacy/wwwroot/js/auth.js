@@ -32,8 +32,9 @@ function handleLogout(e) {
 
 /* ----- Trả về Route Bảng điều khiển tương ứng với Role ----- */
 function dashboardHrefFor(role) {
-    if (role === "admin") return "/Admin/Index";
-    if (role === "pharmacist") return "/Pharmacist/Index";
+    const r = (role || "").toLowerCase();
+    if (r === "admin") return "/Admin/Index";
+    if (r === "pharmacist") return "/Pharmacist/Index";
     return "/Customer/Products";
 }
 
@@ -44,34 +45,22 @@ function renderAuthArea() {
 
     const u = getCurrentUser();
     if (!u) {
-        // Chưa đăng nhập → hiện nút Đăng nhập trỏ về /Customer/Login
+        // Chưa đăng nhập → hiện nút Đăng nhập
         el.innerHTML = `<a href="/Customer/Login" class="link-btn">👤 Đăng nhập</a>`;
         return;
     }
 
-    // Đã đăng nhập → hiện tên + dropdown menu
-    el.innerHTML = `
-        <div class="user-menu">
-            <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)">
-                👤 ${escapeHtml(u.name || u.email)}
-                <span class="caret">▾</span>
-            </button>
-            <div class="user-dropdown" id="userDropdown">
-                <div class="ud-head">
-                    <div class="ud-name">${escapeHtml(u.name || "Người dùng")}</div>
-                    <div class="ud-email">${escapeHtml(u.email || "")}</div>
-                    <span class="badge ${u.role === "admin" ? "danger" :
-            u.role === "pharmacist" ? "warn" : "info"
-        }" style="margin-top:6px;display:inline-block">${escapeHtml(u.role || "customer")}</span>
-                </div>
-                <a href="${dashboardHrefFor(u.role)}">Bảng điều khiển</a>
-                <a href="/Customer/Orders">Đơn hàng của tôi</a>
-                <a href="#" onclick="handleLogout(event)" class="danger">Đăng xuất</a>
-            </div>
-        </div>
-    `;
+    const role = (u.role || "customer").toLowerCase();
+    const isStaff = role === "admin" || role === "pharmacist";
 
-    // Đã đăng nhập → hiện tên + dropdown menu có thêm link "Hồ sơ cá nhân"
+    // Chỉ admin / pharmacist mới thấy "Bảng điều khiển"
+    const dashLink = isStaff
+        ? `<a href="${dashboardHrefFor(role)}">Bảng điều khiển</a>`
+        : "";
+
+    const badgeClass =
+        role === "admin" ? "danger" : role === "pharmacist" ? "warn" : "info";
+
     el.innerHTML = `
     <div class="user-menu">
         <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)">
@@ -82,10 +71,10 @@ function renderAuthArea() {
             <div class="ud-head">
                 <div class="ud-name">${escapeHtml(u.name || "Người dùng")}</div>
                 <div class="ud-email">${escapeHtml(u.email || "")}</div>
-                <span class="badge ${u.role === "admin" ? "danger" : u.role === "pharmacist" ? "warn" : "info"}" style="margin-top:6px;display:inline-block">${escapeHtml(u.role || "customer")}</span>
+                <span class="badge ${badgeClass}" style="margin-top:6px;display:inline-block">${escapeHtml(u.role || "customer")}</span>
             </div>
-            <a href="${dashboardHrefFor(u.role)}">Bảng điều khiển</a>
-            <a href="/Customer/Profile">👤 Hồ sơ cá nhân</a> <!-- 👈 Thêm dòng này vào -->
+            ${dashLink}
+            <a href="/Customer/Profile">👤 Hồ sơ cá nhân</a>
             <a href="/Customer/Orders">🛒 Đơn hàng của tôi</a>
             <a href="#" onclick="handleLogout(event)" class="danger">Đăng xuất</a>
         </div>
@@ -119,15 +108,15 @@ function requireLogin(redirect = "/Customer/Login") {
 function requireRole(role) {
     const user = getCurrentUser();
 
-    // Chưa login → Chuyển tới route /Customer/Login
     if (!user) {
         const back = encodeURIComponent(location.pathname);
         location.href = `/Customer/Login?role=${role}&next=${back}`;
         return false;
     }
 
-    // Admin được vào mọi khu vực, các role khác phải khớp
-    const allowed = user.role === role || user.role === "admin";
+    const userRole = (user.role || "").toLowerCase();
+    const need = (role || "").toLowerCase();
+    const allowed = userRole === need || userRole === "admin";
     if (!allowed) {
         showToast("Bạn không có quyền truy cập khu vực này", "error");
         setTimeout(() => location.href = "/Home/Index", 900);
@@ -143,7 +132,9 @@ function requireRoleAny(roles = []) {
         location.href = `/Customer/Login?role=${roles[0] || "customer"}`;
         return false;
     }
-    if (!roles.includes(user.role) && user.role !== "admin") {
+    const userRole = (user.role || "").toLowerCase();
+    const allowedList = roles.map(r => (r || "").toLowerCase());
+    if (!allowedList.includes(userRole) && userRole !== "admin") {
         showToast("Bạn không có quyền truy cập khu vực này", "error");
         setTimeout(() => location.href = "/Home/Index", 900);
         return false;
@@ -166,14 +157,11 @@ async function handleLoginSubmit(e) {
     }
 
     try {
-        // Gọi API AuthController.Login
         const data = await apiPost(API.AUTH_LOGIN, { email, password });
 
-        // data = { token, user: { id, fullName, email, phone, role, status } }
         const user = data.user;
         const actualRole = (user.role || "customer").toLowerCase();
 
-        // Kiểm tra quyền theo ?role= trên URL
         const isAllowed =
             requiredRole === "customer" ||
             actualRole === requiredRole ||
@@ -190,7 +178,6 @@ async function handleLoginSubmit(e) {
             return;
         }
 
-        // Lưu token + user (đúng format AuthController trả về)
         saveAuth(
             {
                 id: user.id,
@@ -202,7 +189,6 @@ async function handleLoginSubmit(e) {
             data.token
         );
 
-        // Điều hướng theo role (giữ nguyên logic cũ)
         if (actualRole === "admin") {
             showToast("Đăng nhập Quản trị thành công");
             setTimeout(() => location.href = "/Admin/Index", 600);
@@ -218,6 +204,7 @@ async function handleLoginSubmit(e) {
         showToast(err.message || "Đăng nhập thất bại", "error");
     }
 }
+
 /* ----------------- Đăng ký ----------------- */
 async function handleRegisterSubmit(e) {
     e.preventDefault();
@@ -235,8 +222,6 @@ async function handleRegisterSubmit(e) {
     if (pass !== pass2) { showToast("Mật khẩu xác nhận không khớp", "error"); return; }
 
     try {
-        // Gọi API AuthController.Register
-        // DTO backend: RegisterDto(string FullName, string Phone, string Email, string Password)
         await apiPost(API.AUTH_REGISTER, {
             fullName: name,
             phone: phone,
@@ -250,5 +235,3 @@ async function handleRegisterSubmit(e) {
         showToast(err.message || "Đăng ký thất bại", "error");
     }
 }
-
-

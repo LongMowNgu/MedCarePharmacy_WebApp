@@ -14,10 +14,23 @@ function getCurrentUser() {
 
 function renderChatBubble(m, isMine) {
     const time = new Date(m.at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    const textHtml = (m.text || "").trim()
+        ? `<div class="chat-text">${escapeHtml(m.text)}</div>`
+        : "";
+    const imgHtml = m.imageUrl
+        ? `<div class="chat-image" style="margin:6px 0">
+               <a href="${escapeHtml(m.imageUrl)}" target="_blank" rel="noopener">
+                   <img src="${escapeHtml(m.imageUrl)}" alt="Ảnh đính kèm"
+                        style="max-width:220px;max-height:220px;border-radius:8px;display:block;object-fit:contain"
+                        onerror="this.style.display='none'">
+               </a>
+           </div>`
+        : "";
     return `
         <div class="chat-msg ${isMine ? "mine" : "theirs"}">
             <div class="chat-bubble">
-                <div class="chat-text">${escapeHtml(m.text || "")}</div>
+                ${imgHtml}
+                ${textHtml}
                 <div class="chat-meta">${escapeHtml(m.senderName || "")} · ${time}</div>
             </div>
         </div>
@@ -50,15 +63,56 @@ function initCustomerChat() {
     if (!user) {
         root.innerHTML = `
             <div class="empty">
-                Vui lòng <a href="/Auth/Login">đăng nhập</a> để sử dụng tư vấn trực tuyến.
+                Vui lòng <a href="/Customer/Login">đăng nhập</a> để sử dụng tư vấn trực tuyến.
             </div>`;
         return;
     }
 
     let peerId = null;
+    let selectedFile = null;
+
     const wrap = document.getElementById("chatMessages");
     const input = document.getElementById("chatInput");
     const btn = document.getElementById("chatSend");
+    const fileInput = document.getElementById("chatImage");
+    const fileBtn = document.getElementById("chatImageBtn");
+    const preview = document.getElementById("chatImagePreview");
+
+    function clearImageSelection() {
+        selectedFile = null;
+        if (fileInput) fileInput.value = "";
+        if (preview) {
+            preview.style.display = "none";
+            preview.removeAttribute("src");
+        }
+    }
+
+    if (fileBtn && fileInput) {
+        // fileBtn.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) {
+                clearImageSelection();
+                return;
+            }
+            const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+            if (!allowed.includes(f.type)) {
+                showToast("Chỉ chấp nhận ảnh JPG, PNG, WebP, GIF.", "error");
+                clearImageSelection();
+                return;
+            }
+            if (f.size > 2 * 1024 * 1024) {
+                showToast("Ảnh không được vượt quá 2 MB.", "error");
+                clearImageSelection();
+                return;
+            }
+            selectedFile = f;
+            if (preview) {
+                preview.src = URL.createObjectURL(f);
+                preview.style.display = "block";
+            }
+        });
+    }
 
     async function ensurePharmacist() {
         try {
@@ -92,11 +146,19 @@ function initCustomerChat() {
     }
 
     async function send() {
-        const t = (input.value || "").trim();
-        if (!t || !peerId) return;
+        if (!peerId) return;
+        const t = (input && input.value || "").trim();
+        if (!t && !selectedFile) return;
+
+        const form = new FormData();
+        form.append("receiverId", String(peerId));
+        if (t) form.append("content", t);
+        if (selectedFile) form.append("image", selectedFile);
+
         try {
-            await apiPost(API.CHAT_MESSAGES, { receiverId: peerId, content: t });
-            input.value = "";
+            await apiPost(API.CHAT_MESSAGES, form);
+            if (input) input.value = "";
+            clearImageSelection();
             await render();
         } catch (err) {
             showToast(err.message || "Gửi tin thất bại", "error");
@@ -133,12 +195,51 @@ function initPharmacistChat() {
 
     let activePeerId = null;
     let convsCache = [];
+    let selectedFile = null;
 
     const listEl = document.getElementById("chatConvList");
     const msgEl = document.getElementById("chatMessages");
     const input = document.getElementById("chatInput");
     const btn = document.getElementById("chatSend");
     const headerEl = document.getElementById("chatHeader");
+    const fileInput = document.getElementById("chatImage");
+    const fileBtn = document.getElementById("chatImageBtn");
+    const preview = document.getElementById("chatImagePreview");
+
+    function clearImageSelection() {
+        selectedFile = null;
+        if (fileInput) fileInput.value = "";
+        if (preview) {
+            preview.style.display = "none";
+            preview.removeAttribute("src");
+        }
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener("change", () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) {
+                clearImageSelection();
+                return;
+            }
+            const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+            if (!allowed.includes(f.type)) {
+                showToast("Chỉ chấp nhận ảnh JPG, PNG, WebP, GIF.", "error");
+                clearImageSelection();
+                return;
+            }
+            if (f.size > 2 * 1024 * 1024) {
+                showToast("Ảnh không được vượt quá 2 MB.", "error");
+                clearImageSelection();
+                return;
+            }
+            selectedFile = f;
+            if (preview) {
+                preview.src = URL.createObjectURL(f);
+                preview.style.display = "block";
+            }
+        });
+    }
 
     async function loadConvs() {
         try {
@@ -146,7 +247,9 @@ function initPharmacistChat() {
             convsCache = Array.isArray(convs) ? convs : [];
             renderList();
         } catch (err) {
-            if (listEl) listEl.innerHTML = `<div class="empty" style="padding:20px 10px">${escapeHtml(err.message || "Lỗi tải hội thoại")}</div>`;
+            if (listEl) {
+                listEl.innerHTML = `<div class="empty" style="padding:20px 10px">${escapeHtml(err.message || "Lỗi tải hội thoại")}</div>`;
+            }
         }
     }
 
@@ -191,7 +294,6 @@ function initPharmacistChat() {
                 msgEl.scrollTop = msgEl.scrollHeight;
             }
             await apiPut(`${API.CHAT_MESSAGES}/read?peerId=${activePeerId}`, {});
-            // Cập nhật badge unread local
             if (conv) conv.unread = 0;
             renderList();
         } catch (err) {
@@ -206,11 +308,19 @@ function initPharmacistChat() {
     };
 
     async function send() {
-        const t = (input.value || "").trim();
-        if (!t || !activePeerId) return;
+        if (!activePeerId) return;
+        const t = (input && input.value || "").trim();
+        if (!t && !selectedFile) return;
+
+        const form = new FormData();
+        form.append("receiverId", String(activePeerId));
+        if (t) form.append("content", t);
+        if (selectedFile) form.append("image", selectedFile);
+
         try {
-            await apiPost(API.CHAT_MESSAGES, { receiverId: activePeerId, content: t });
-            input.value = "";
+            await apiPost(API.CHAT_MESSAGES, form);
+            if (input) input.value = "";
+            clearImageSelection();
             await loadConvs();
             await renderMessages();
         } catch (err) {
@@ -219,9 +329,14 @@ function initPharmacistChat() {
     }
 
     if (btn) btn.addEventListener("click", send);
-    if (input) input.addEventListener("keydown", e => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-    });
+    if (input) {
+        input.addEventListener("keydown", e => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+            }
+        });
+    }
 
     loadConvs();
     setInterval(async () => {

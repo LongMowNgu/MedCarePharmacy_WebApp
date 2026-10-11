@@ -78,46 +78,56 @@ const CATEGORIES = [
     { id: "Mẹ & Bé",            icon: "👶" }
 ];
 
-/* --------- Sản phẩm demo (dùng chung khi chưa có backend) --------- */
-const DEMO_PRODUCTS = [
-    { id: 1, name: "Paracetamol 500mg", category: "Thuốc",            active: "Paracetamol",   price: 25000,  stock: 120, icon: "💊", rating: 4.9, unit: "Hộp",   supplier: "NCC Dược Hậu Giang", desc: "Giảm đau, hạ sốt." },
-    { id: 2, name: "Vitamin C 500mg",   category: "Vitamin",          active: "Acid ascorbic", price: 60000,  stock: 85,  icon: "🍊", rating: 4.8, unit: "Hộp",   supplier: "NCC Vitamin VN",   desc: "Bổ sung vitamin C, tăng đề kháng." },
-    { id: 3, name: "Nhiệt kế điện tử",  category: "Thiết bị y tế",    active: "—",             price: 85000,  stock: 30,  icon: "🌡️", rating: 4.7, unit: "Cái",   supplier: "NCC Thiết bị y tế", desc: "Đo nhiệt độ cơ thể nhanh, chính xác." },
-    { id: 4, name: "Kem dưỡng ẩm",       category: "Dược mỹ phẩm",     active: "Glycerin",      price: 145000, stock: 45,  icon: "🧴", rating: 4.8, unit: "Tuýp",  supplier: "NCC Mỹ phẩm",     desc: "Dưỡng ẩm cho da khô." },
-    { id: 5, name: "Nước rửa tay",       category: "Chăm sóc cá nhân", active: "—",             price: 42000,  stock: 0,   icon: "🧼", rating: 4.6, unit: "Chai",  supplier: "NCC Gia dụng",    desc: "Sát khuẩn tay nhanh." },
-    { id: 6, name: "Siro ho trẻ em",    category: "Mẹ & Bé",          active: "Cao lá thường xuân", price: 95000, stock: 22, icon: "🍼", rating: 4.9, unit: "Chai",  supplier: "NCC Mẹ & Bé",     desc: "Giảm ho cho trẻ từ 2 tuổi." },
-    { id: 7, name: "Băng cá nhân",       category: "Thiết bị y tế",    active: "—",             price: 18000,  stock: 200, icon: "🩹", rating: 4.7, unit: "Hộp",   supplier: "NCC Y tế A",      desc: "Băng vết thương nhỏ." },
-    { id: 8, name: "Omega 3",            category: "Vitamin",          active: "Omega 3-6-9",   price: 220000, stock: 12,  icon: "💚", rating: 4.8, unit: "Hộp",   supplier: "NCC Vitamin VN",  desc: "Hỗ trợ tim mạch, não bộ." }
-];
+/* --------- Sản phẩm demo (giữ để tương thích chỗ khác nếu còn dùng) --------- */
+const DEMO_PRODUCTS = [ /* giữ nguyên mảng cũ nếu cart.js còn tham chiếu */ ];
 
-/* --------- Sản phẩm demo cho trang chủ --------- */
-function renderHomeProducts() {
+/* --------- Sản phẩm nổi bật trang chủ – lấy từ API --------- */
+async function renderHomeProducts() {
     const listEl = document.getElementById("productList");
     if (!listEl) return;
 
-    const sortEl = document.getElementById("sortSelect");
-    let data = [...DEMO_PRODUCTS];
+    listEl.innerHTML = `<p class="empty">Đang tải sản phẩm...</p>`;
 
-    if (sortEl) {
-        if (sortEl.value === "low")  data.sort((a, b) => a.price - b.price);
-        if (sortEl.value === "high") data.sort((a, b) => b.price - a.price);
+    try {
+        const sortEl = document.getElementById("sortSelect");
+        let endpoint = (typeof API !== "undefined" && API.PRODUCTS) ? API.PRODUCTS : "/api/products";
+        endpoint += "?";
+        if (sortEl && sortEl.value === "low") endpoint += "sort=low&";
+        if (sortEl && sortEl.value === "high") endpoint += "sort=high&";
+
+        const products = await apiGet(endpoint);
+        if (!products || !products.length) {
+            listEl.innerHTML = `<p class="empty">Chưa có sản phẩm nào.</p>`;
+            return;
+        }
+
+        let data = products.slice(0, 8);
+
+        listEl.innerHTML = data.map(p => {
+            const cat = (p.category && p.category.name) ? p.category.name : (p.category || "—");
+            const img = p.imageUrl && p.imageUrl.trim()
+                ? (p.imageUrl.startsWith("http") || p.imageUrl.startsWith("/") ? p.imageUrl : "/" + p.imageUrl)
+                : null;
+            const imgHtml = img
+                ? `<img src="${escapeHtml(img)}" alt="${escapeHtml(p.name)}" style="max-width:100%;max-height:120px;object-fit:contain" onerror="this.parentElement.innerHTML='💊'">`
+                : "💊";
+            return `
+                <article class="product">
+                    <div class="product-image">${imgHtml}</div>
+                    <div class="product-body">
+                        <span class="product-category">${escapeHtml(cat)}</span>
+                        <h3><a href="/Customer/ProductDetail?id=${p.id}">${escapeHtml(p.name)}</a></h3>
+                        <div class="price">${formatPrice(p.price)}</div>
+                        <button class="add-cart" onclick="addToCartFromApi(${p.id}, '${escapeHtml(p.name).replace(/'/g, "\\'")}', ${p.price}, '${escapeHtml(p.unit || "Hộp")}', '${img || "💊"}', ${p.stockQuantity ?? 0})">Thêm vào giỏ</button>
+                    </div>
+                </article>
+            `;
+        }).join("");
+    } catch (err) {
+        listEl.innerHTML = `<p class="empty">Không tải được sản phẩm. Vui lòng thử lại.</p>`;
+        console.warn(err);
     }
-    data = data.slice(0, 8);
-
-    listEl.innerHTML = data.map(p => `
-        <article class="product">
-            <div class="product-image">${p.icon}</div>
-            <div class="product-body">
-                <span class="product-category">${escapeHtml(p.category)}</span>
-                <h3>${escapeHtml(p.name)}</h3>
-                <div class="rating">★ ${p.rating}</div>
-                <div class="price">${formatPrice(p.price)}</div>
-                <button class="add-cart" onclick="addToCart(${p.id})">Thêm vào giỏ</button>
-            </div>
-        </article>
-    `).join("");
 }
-
 
 /* ---------- Modal dùng chung ---------- */
 function openModal(html, actions = []) {

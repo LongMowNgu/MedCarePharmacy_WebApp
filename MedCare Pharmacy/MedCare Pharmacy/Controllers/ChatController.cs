@@ -96,7 +96,9 @@ namespace MedCare_Pharmacy.Controllers
                     peerName = peer?.FullName ?? ("User #" + pid),
                     peerEmail = peer?.Email ?? "",
                     peerRole = peer?.Role?.ToLower() ?? "",
-                    lastMessage = last.Content,
+                    lastMessage = !string.IsNullOrEmpty(last.Content)
+                    ? last.Content
+                    : (!string.IsNullOrEmpty(last.ImageUrl) ? "[Ảnh]" : ""),
                     lastUpdate = last.Timestamp,
                     unread
                 };
@@ -120,7 +122,6 @@ namespace MedCare_Pharmacy.Controllers
             List<ChatMessage> msgs;
             if (isStaff)
             {
-                // Admin/Dược sĩ xem toàn bộ tin nhắn trao đổi với khách hàng peerId (bất kể do ai trong ban quản trị gửi)
                 msgs = await _context.ChatMessages
                     .Where(m => m.SenderId == peerId || m.ReceiverId == peerId)
                     .OrderBy(m => m.Timestamp)
@@ -147,6 +148,7 @@ namespace MedCare_Pharmacy.Controllers
                 senderId = m.SenderId,
                 receiverId = m.ReceiverId,
                 text = m.Content,
+                imageUrl = m.ImageUrl,
                 at = m.Timestamp,
                 isRead = m.IsRead,
                 senderName = users.ContainsKey(m.SenderId) ? users[m.SenderId].FullName : "",
@@ -155,26 +157,63 @@ namespace MedCare_Pharmacy.Controllers
 
             return Ok(result);
         }
-
-        // POST: api/chat/messages
+        // POST: api/chat/messages  (FormData: receiverId, content?, image?)
         [HttpPost("messages")]
-        public async Task<IActionResult> Send([FromBody] SendChatDto dto)
+        [RequestSizeLimit(3 * 1024 * 1024)] // tối đa ~3MB request
+        public async Task<IActionResult> Send(
+            [FromForm] int receiverId,
+            [FromForm] string? content,
+            [FromForm] IFormFile? image)
         {
             var me = CurrentUserId();
             if (me == null) return Unauthorized();
 
-            if (dto == null || dto.ReceiverId <= 0 || string.IsNullOrWhiteSpace(dto.Content))
-                return BadRequest(new { message = "Thiếu người nhận hoặc nội dung" });
+            if (receiverId <= 0)
+                return BadRequest(new { message = "Thiếu người nhận." });
 
-            var receiver = await _context.Users.FindAsync(dto.ReceiverId);
+            var receiver = await _context.Users.FindAsync(receiverId);
             if (receiver == null)
-                return BadRequest(new { message = "Không tìm thấy người nhận" });
+                return BadRequest(new { message = "Không tìm thấy người nhận." });
+
+            var text = (content ?? "").Trim();
+            string? imageUrl = null;
+
+            if (image != null && image.Length > 0)
+            {
+                var allowedExt = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+                var ext = Path.GetExtension(image.FileName).ToLowerInvariant();
+                if (string.IsNullOrEmpty(ext) || !allowedExt.Contains(ext))
+                    return BadRequest(new { message = "Chỉ chấp nhận ảnh JPG, JPEG, PNG, WebP, GIF." });
+
+                if (image.Length > 2 * 1024 * 1024)
+                    return BadRequest(new { message = "Ảnh không được vượt quá 2 MB." });
+
+                // Chặn MIME không phải ảnh
+                var contentType = (image.ContentType ?? "").ToLowerInvariant();
+                if (!contentType.StartsWith("image/"))
+                    return BadRequest(new { message = "Tệp không phải là ảnh hợp lệ." });
+
+                var folder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "chat");
+                Directory.CreateDirectory(folder);
+
+                var fileName = $"{Guid.NewGuid():N}{ext}";
+                var fullPath = Path.Combine(folder, fileName);
+                using (var stream = new FileStream(fullPath, FileMode.Create))
+                {
+                    await image.CopyToAsync(stream);
+                }
+                imageUrl = $"/uploads/chat/{fileName}";
+            }
+
+            if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(imageUrl))
+                return BadRequest(new { message = "Vui lòng nhập nội dung hoặc chọn ảnh." });
 
             var msg = new ChatMessage
             {
                 SenderId = me.Value,
-                ReceiverId = dto.ReceiverId,
-                Content = dto.Content.Trim(),
+                ReceiverId = receiverId,
+                Content = text,
+                ImageUrl = imageUrl,
                 Timestamp = DateTime.Now,
                 IsRead = false
             };
@@ -189,10 +228,10 @@ namespace MedCare_Pharmacy.Controllers
                 senderId = msg.SenderId,
                 receiverId = msg.ReceiverId,
                 text = msg.Content,
+                imageUrl = msg.ImageUrl,
                 at = msg.Timestamp
             });
         }
-
         // PUT: api/chat/messages/read?peerId=5
         [HttpPut("messages/read")]
         public async Task<IActionResult> MarkRead([FromQuery] int peerId)
@@ -267,5 +306,5 @@ namespace MedCare_Pharmacy.Controllers
         }
     }
 
-    public record SendChatDto(int ReceiverId, string Content);
+    //public record SendChatDto(int ReceiverId, string Content);
 }
