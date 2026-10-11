@@ -38,6 +38,17 @@ function dashboardHrefFor(role) {
     return "/Customer/Products";
 }
 
+/* ----- HTML ảnh đại diện (có cache-bust) ----- */
+function avatarHtml(user, size) {
+    size = size || 28;
+    const url = user && user.avatarUrl ? String(user.avatarUrl) : "";
+    if (url) {
+        const src = url + (url.indexOf("?") >= 0 ? "&" : "?") + "t=" + Date.now();
+        return `<img src="${escapeHtml(src)}" alt="" class="user-avatar-img" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;border:1px solid #e5e7eb">`;
+    }
+    return `<span style="display:inline-block;width:${size}px;height:${size}px;line-height:${size}px;text-align:center;border-radius:50%;background:#eef2f2;margin-right:6px;font-size:${Math.floor(size * 0.55)}px;vertical-align:middle">👤</span>`;
+}
+
 /* ----- Render vùng tài khoản ở header ----- */
 function renderAuthArea() {
     const el = document.getElementById("authArea");
@@ -45,33 +56,35 @@ function renderAuthArea() {
 
     const u = getCurrentUser();
     if (!u) {
-        // Chưa đăng nhập → hiện nút Đăng nhập
         el.innerHTML = `<a href="/Customer/Login" class="link-btn">👤 Đăng nhập</a>`;
         return;
     }
 
     const role = (u.role || "customer").toLowerCase();
     const isStaff = role === "admin" || role === "pharmacist";
-
-    // Chỉ admin / pharmacist mới thấy "Bảng điều khiển"
     const dashLink = isStaff
         ? `<a href="${dashboardHrefFor(role)}">Bảng điều khiển</a>`
         : "";
-
     const badgeClass =
         role === "admin" ? "danger" : role === "pharmacist" ? "warn" : "info";
 
     el.innerHTML = `
     <div class="user-menu">
-        <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)">
-            👤 ${escapeHtml(u.name || u.email)}
+        <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)" style="display:inline-flex;align-items:center">
+            ${avatarHtml(u, 28)}
+            ${escapeHtml(u.name || u.email)}
             <span class="caret">▾</span>
         </button>
         <div class="user-dropdown" id="userDropdown">
             <div class="ud-head">
-                <div class="ud-name">${escapeHtml(u.name || "Người dùng")}</div>
-                <div class="ud-email">${escapeHtml(u.email || "")}</div>
-                <span class="badge ${badgeClass}" style="margin-top:6px;display:inline-block">${escapeHtml(u.role || "customer")}</span>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                    ${avatarHtml(u, 40)}
+                    <div>
+                        <div class="ud-name">${escapeHtml(u.name || "Người dùng")}</div>
+                        <div class="ud-email">${escapeHtml(u.email || "")}</div>
+                    </div>
+                </div>
+                <span class="badge ${badgeClass}" style="margin-top:4px;display:inline-block">${escapeHtml(u.role || "customer")}</span>
             </div>
             ${dashLink}
             <a href="/Customer/Profile">👤 Hồ sơ cá nhân</a>
@@ -107,13 +120,11 @@ function requireLogin(redirect = "/Customer/Login") {
 /* ----------------- Bảo vệ trang theo vai trò ----------------- */
 function requireRole(role) {
     const user = getCurrentUser();
-
     if (!user) {
         const back = encodeURIComponent(location.pathname);
         location.href = `/Customer/Login?role=${role}&next=${back}`;
         return false;
     }
-
     const userRole = (user.role || "").toLowerCase();
     const need = (role || "").toLowerCase();
     const allowed = userRole === need || userRole === "admin";
@@ -122,7 +133,6 @@ function requireRole(role) {
         setTimeout(() => location.href = "/Home/Index", 900);
         return false;
     }
-
     return true;
 }
 
@@ -142,13 +152,12 @@ function requireRoleAny(roles = []) {
     return true;
 }
 
-/* ----------------- Đăng nhập (phân quyền theo ?role=) ----------------- */
+/* ----------------- Đăng nhập ----------------- */
 async function handleLoginSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const email = form.email.value.trim();
     const password = form.password.value;
-
     const requiredRole = (getQuery("role") || "customer").toLowerCase();
 
     if (!email || !password) {
@@ -158,7 +167,6 @@ async function handleLoginSubmit(e) {
 
     try {
         const data = await apiPost(API.AUTH_LOGIN, { email, password });
-
         const user = data.user;
         const actualRole = (user.role || "customer").toLowerCase();
 
@@ -184,7 +192,8 @@ async function handleLoginSubmit(e) {
                 name: user.fullName || user.email,
                 email: user.email,
                 phone: user.phone,
-                role: actualRole
+                role: actualRole,
+                avatarUrl: user.avatarUrl || null
             },
             data.token
         );
@@ -228,7 +237,6 @@ async function handleRegisterSubmit(e) {
             email: email,
             password: pass
         });
-
         showToast("Đăng ký thành công, hãy đăng nhập");
         setTimeout(() => location.href = "/Customer/Login", 700);
     } catch (err) {

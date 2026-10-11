@@ -49,8 +49,23 @@
     <main class="page-wrap">
         <h1 style="margin-bottom:18px">👤 Quản lý tài khoản cá nhân</h1>
 
+        <!-- Ảnh đại diện -->
+        <div class="panel" style="background:white;border:1px solid #edf0f0;border-radius:12px;padding:22px;margin-bottom:24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+            <img id="profileAvatarImg"
+                 src="/uploads/avatars/default.png"
+                 alt="Ảnh đại diện"
+                 style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid #edf0f0;background:#f5f5f5"
+                 onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2296%22 height=%2296%22%3E%3Crect fill=%22%23e8eef0%22 width=%2296%22 height=%2296%22/%3E%3Ctext x=%2248%22 y=%2256%22 text-anchor=%22middle%22 font-size=%2236%22%3E👤%3C/text%3E%3C/svg%3E'">
+            <div>
+                <h3 style="margin:0 0 8px;font-size:18px;color:#16352d">Ảnh đại diện</h3>
+                <p style="margin:0 0 12px;color:#667085;font-size:13px">JPG, JPEG, PNG, WebP — tối đa 2 MB</p>
+                <input type="file" id="avatarFile" accept="image/jpeg,image/png,image/webp" style="display:none">
+                <label for="avatarFile" class="primary-btn" style="display:inline-block;cursor:pointer;padding:10px 16px">Chọn ảnh mới</label>
+                <button type="button" id="avatarUploadBtn" class="btn" style="margin-left:8px;padding:10px 16px;display:none">Tải lên</button>
+            </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-            <!-- Panel Cập nhật thông tin cá nhân -->
             <div class="panel" style="background: white; border: 1px solid #edf0f0; border-radius: 12px; padding: 22px;">
                 <h3 style="margin-bottom: 16px; font-size: 18px; color: #16352d;">Thông tin cá nhân</h3>
                 <form id="profileForm" onsubmit="handleUpdateProfile(event)">
@@ -74,7 +89,6 @@
                 </form>
             </div>
 
-            <!-- Panel Đổi mật khẩu -->
             <div class="panel" style="background: white; border: 1px solid #edf0f0; border-radius: 12px; padding: 22px;">
                 <h3 style="margin-bottom: 16px; font-size: 18px; color: #16352d;">Đổi mật khẩu</h3>
                 <form id="passwordForm" onsubmit="handleChangePassword(event)">
@@ -112,33 +126,103 @@
                 if (typeof renderAuthArea === "function") renderAuthArea();
 
                 const user = typeof getCurrentUser === "function" ? getCurrentUser() : null;
-                if (user) {
-                    document.getElementById("profileName").value = user.name || user.fullName || "";
-                    document.getElementById("profilePhone").value = user.phone || "";
-                    document.getElementById("profileEmail").value = user.email || "";
-                } else {
+                if (!user) {
                     location.href = "/Customer/Login?next=/Customer/Profile";
+                    return;
                 }
+
+                document.getElementById("profileName").value = user.name || user.fullName || "";
+                document.getElementById("profilePhone").value = user.phone || "";
+                document.getElementById("profileEmail").value = user.email || "";
+
+                const avatarImg = document.getElementById("profileAvatarImg");
+                if (user.avatarUrl) {
+                    avatarImg.src = user.avatarUrl + (user.avatarUrl.indexOf("?") >= 0 ? "&" : "?") + "t=" + Date.now();
+                }
+
+                const fileInput = document.getElementById("avatarFile");
+                const uploadBtn = document.getElementById("avatarUploadBtn");
+                let selectedAvatar = null;
+
+                fileInput.addEventListener("change", () => {
+                    const f = fileInput.files && fileInput.files[0];
+                    if (!f) {
+                        selectedAvatar = null;
+                        uploadBtn.style.display = "none";
+                        return;
+                    }
+                    const allowed = ["image/jpeg", "image/png", "image/webp"];
+                    if (!allowed.includes(f.type)) {
+                        showToast("Chỉ hỗ trợ JPG, JPEG, PNG, WebP.", "error");
+                        fileInput.value = "";
+                        selectedAvatar = null;
+                        uploadBtn.style.display = "none";
+                        return;
+                    }
+                    if (f.size > 2 * 1024 * 1024) {
+                        showToast("Ảnh không được vượt quá 2 MB.", "error");
+                        fileInput.value = "";
+                        selectedAvatar = null;
+                        uploadBtn.style.display = "none";
+                        return;
+                    }
+                    selectedAvatar = f;
+                    avatarImg.src = URL.createObjectURL(f);
+                    uploadBtn.style.display = "inline-block";
+                });
+
+                uploadBtn.addEventListener("click", async () => {
+                    if (!selectedAvatar) return;
+                    const form = new FormData();
+                    form.append("file", selectedAvatar);
+                    const token = localStorage.getItem("medcare_token") || "";
+                    try {
+                        const res = await fetch("/api/auth/avatar", {
+                            method: "POST",
+                            headers: { "Authorization": "Bearer " + token },
+                            body: form
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            showToast(data.message || "Tải ảnh thất bại.", "error");
+                            return;
+                        }
+                        const url = data.avatarUrl;
+                        if (url) {
+                            avatarImg.src = url + "?t=" + Date.now();
+                            const u = getCurrentUser();
+                            if (u) {
+                                u.avatarUrl = url;
+                                localStorage.setItem("medcare_user", JSON.stringify(u));
+                            }
+                            if (typeof renderAuthArea === "function") renderAuthArea();
+                        }
+                        selectedAvatar = null;
+                        fileInput.value = "";
+                        uploadBtn.style.display = "none";
+                        showToast(data.message || "Đổi ảnh đại diện thành công.");
+                    } catch (err) {
+                        showToast("Lỗi kết nối đến máy chủ.", "error");
+                    }
+                });
             });
 
             async function handleUpdateProfile(e) {
                 e.preventDefault();
-                const fullName = document.getElementById("profileName").value.trim();
-                const phone = document.getElementById("profilePhone").value.trim();
+                const fullName = e.target.fullName.value.trim();
+                const phone = e.target.phone.value.trim();
                 const token = localStorage.getItem("medcare_token") || localStorage.getItem("token");
 
                 try {
-                    const response = await fetch('/api/auth/update-profile', {
-                        method: 'POST',
+                    const response = await fetch("/api/auth/update-profile", {
+                        method: "POST",
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer " + token
                         },
                         body: JSON.stringify({ fullName, phone })
                     });
-
                     const result = await response.json();
-
                     if (response.ok) {
                         const user = getCurrentUser();
                         if (user) {
@@ -146,7 +230,7 @@
                             user.phone = phone;
                             localStorage.setItem("medcare_user", JSON.stringify(user));
                         }
-                        if (typeof showToast === "function") showToast(result.message || "Cập nhật cơ sở dữ liệu thành công!", "success");
+                        if (typeof showToast === "function") showToast(result.message || "Cập nhật thành công!", "success");
                         if (typeof renderAuthArea === "function") renderAuthArea();
                     } else {
                         if (typeof showToast === "function") showToast(result.message || "Cập nhật thất bại", "error");
@@ -170,17 +254,15 @@
                 const token = localStorage.getItem("medcare_token") || localStorage.getItem("token");
 
                 try {
-                    const response = await fetch('/api/auth/change-password', {
-                        method: 'POST',
+                    const response = await fetch("/api/auth/change-password", {
+                        method: "POST",
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer " + token
                         },
                         body: JSON.stringify({ currentPassword, newPassword })
                     });
-
                     const result = await response.json();
-
                     if (response.ok) {
                         if (typeof showToast === "function") showToast(result.message || "Đổi mật khẩu thành công!", "success");
                         e.target.reset();

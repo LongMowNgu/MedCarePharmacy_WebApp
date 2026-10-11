@@ -67,7 +67,19 @@ function initCustomerChat() {
             </div>`;
         return;
     }
-
+    const role = (user.role || "").toLowerCase();
+    if (role === "admin" || role === "pharmacist") {
+        root.innerHTML = `
+            <div class="empty" style="padding:24px;line-height:1.6">
+                Bạn đang đăng nhập với quyền <b>${escapeHtml(role)}</b>.<br>
+                Trang này chỉ dành cho <b>khách hàng</b>.<br><br>
+                Vui lòng dùng khu vực tư vấn của dược sĩ:<br>
+                <a href="/Pharmacist/Consultation" style="color:#0b8f66;font-weight:600">
+                    → Mở Tư vấn trực tuyến (Dược sĩ)
+                </a>
+            </div>`;
+        return;
+    }
     let peerId = null;
     let selectedFile = null;
 

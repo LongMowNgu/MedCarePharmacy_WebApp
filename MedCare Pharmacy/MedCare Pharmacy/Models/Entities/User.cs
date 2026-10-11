@@ -8,7 +8,8 @@
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public string Role { get; set; } = "Customer";
-        public string Status { get; set; } = "Active"; 
+        public string Status { get; set; } = "Active";
+        public string? AvatarUrl { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
     }
 }

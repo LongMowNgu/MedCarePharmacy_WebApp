@@ -10,8 +10,13 @@
             <span>✚</span> MedCare
         </a>
 
-        <form class="search-box" onsubmit="event.preventDefault(); location.href='@Url.Action("Products", "Customer")?q=' + encodeURIComponent(this.q.value)">
-            <input id="searchInput" name="q" type="text" placeholder="Tìm kiếm thuốc, vitamin, sản phẩm...">
+        <form class="search-box" id="searchForm"
+              onsubmit="event.preventDefault(); location.href='@Url.Action("Products", "Customer")?q=' + encodeURIComponent(document.getElementById('searchInput').value)">
+            <div class="search-suggest-wrap">
+                <input id="searchInput" name="q" type="text" autocomplete="off"
+                       placeholder="Tìm kiếm thuốc, vitamin, sản phẩm...">
+                <div id="searchSuggest" class="search-suggest" role="listbox" aria-label="Gợi ý tìm kiếm"></div>
+            </div>
             <button type="submit">🔍</button>
         </form>
 

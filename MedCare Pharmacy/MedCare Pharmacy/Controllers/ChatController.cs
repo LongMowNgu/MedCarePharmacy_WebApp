@@ -64,7 +64,7 @@ namespace MedCare_Pharmacy.Controllers
             }
             else
             {
-                // Nếu là Khách hàng: Chỉ lấy tin nhắn của chính mình
+                // Khách hàng: chỉ tin nhắn của chính mình
                 messages = await _context.ChatMessages
                     .Where(m => m.SenderId == me || m.ReceiverId == me)
                     .OrderByDescending(m => m.Timestamp)
@@ -74,6 +74,14 @@ namespace MedCare_Pharmacy.Controllers
                     .Select(m => m.SenderId == me ? m.ReceiverId : m.SenderId)
                     .Distinct()
                     .ToList();
+
+                // Chỉ giữ peer là dược sĩ/admin (tránh dính hội thoại không hợp lệ)
+                var staffIdSet = await _context.Users
+                    .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
+                    .Select(u => u.Id)
+                    .ToListAsync();
+
+                peerIds = peerIds.Where(id => staffIdSet.Contains(id)).ToList();
             }
 
             var peers = await _context.Users

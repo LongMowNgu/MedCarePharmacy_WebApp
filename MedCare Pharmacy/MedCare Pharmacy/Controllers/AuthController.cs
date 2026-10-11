@@ -36,7 +36,6 @@ namespace MedCare_Pharmacy.Controllers
                 return BadRequest(new { message = "Email hoặc mật khẩu không chính xác" });
             }
 
-            // Kiểm tra mật khẩu (hỗ trợ cả Bcrypt hash và chuỗi thuần demo)
             bool isValidPassword = false;
             try
             {
@@ -67,8 +66,9 @@ namespace MedCare_Pharmacy.Controllers
                     user.FullName,
                     user.Email,
                     user.Phone,
-                    role = user.Role.ToLower(), // Chuẩn hóa chữ thường cho Frontend
-                    user.Status
+                    role = user.Role.ToLower(),
+                    user.Status,
+                    avatarUrl = user.AvatarUrl
                 }
             });
         }
@@ -87,7 +87,7 @@ namespace MedCare_Pharmacy.Controllers
                 Phone = dto.Phone,
                 Email = dto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                Role = "customer", // Đổi thành 'customer' viết thường
+                Role = "customer",
                 Status = "Active"
             };
 
@@ -122,9 +122,6 @@ namespace MedCare_Pharmacy.Controllers
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-   
-
-        // (Tùy chọn) POST API xử lý khôi phục mật khẩu ở Backend
         [HttpPost("api/auth/forgot-password")]
         public async Task<IActionResult> ForgotPasswordApi([FromBody] ForgotPasswordDto dto)
         {
@@ -138,11 +135,8 @@ namespace MedCare_Pharmacy.Controllers
 
             if (user == null)
             {
-                // Để bảo mật, thường vẫn trả về thành công giả lập để tránh lộ thông tin tài khoản tồn tại hay không
                 return Ok(new { success = true, message = "Nếu tài khoản tồn tại, hướng dẫn đã được gửi." });
             }
-
-            // TODO: Tạo token đặt lại mật khẩu và gửi email / SMS cho người dùng ở đây
 
             return Ok(new { success = true, message = "Đã gửi hướng dẫn khôi phục mật khẩu." });
         }
@@ -157,16 +151,21 @@ namespace MedCare_Pharmacy.Controllers
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound(new { message = "Không tìm thấy người dùng" });
 
-            // Cập nhật thông tin vào cơ sở dữ liệu SQL Server
             user.FullName = dto.FullName;
             user.Phone = dto.Phone;
 
-            await _context.SaveChangesAsync(); // Lưu thay đổi vào CSDL
+            await _context.SaveChangesAsync();
 
-            return Ok(new { success = true, message = "Cập nhật cơ sở dữ liệu thành công" });
+            return Ok(new
+            {
+                success = true,
+                message = "Cập nhật cơ sở dữ liệu thành công",
+                fullName = user.FullName,
+                phone = user.Phone,
+                avatarUrl = user.AvatarUrl
+            });
         }
 
-        // Bổ sung API đổi mật khẩu lưu vào Database
         [HttpPost("change-password")]
         [Authorize]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
@@ -177,18 +176,66 @@ namespace MedCare_Pharmacy.Controllers
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound(new { message = "Không tìm thấy người dùng" });
 
-            // Kiểm tra mật khẩu hiện tại bằng BCrypt
             bool isValidPassword = BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash);
             if (!isValidPassword)
             {
                 return BadRequest(new { message = "Mật khẩu hiện tại không chính xác" });
             }
 
-            // Mã hóa mật khẩu mới và lưu vào Database
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, message = "Đổi mật khẩu thành công" });
+        }
+
+        /// <summary>
+        /// Đổi ảnh hồ sơ — chỉ user đang đăng nhập, chỉ sửa avatar của chính mình.
+        /// </summary>
+        [HttpPost("avatar")]
+        [Authorize]
+        [RequestSizeLimit(3 * 1024 * 1024)]
+        public async Task<IActionResult> UploadAvatar(IFormFile file)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out int userId)) return Unauthorized();
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "Vui lòng chọn ảnh." });
+
+            var allowedExt = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (string.IsNullOrEmpty(ext) || !allowedExt.Contains(ext))
+                return BadRequest(new { message = "Chỉ hỗ trợ JPG, JPEG, PNG, WebP." });
+
+            if (file.Length > 2 * 1024 * 1024)
+                return BadRequest(new { message = "Ảnh không được vượt quá 2 MB." });
+
+            var contentType = (file.ContentType ?? "").ToLowerInvariant();
+            if (!contentType.StartsWith("image/"))
+                return BadRequest(new { message = "Tệp không phải là ảnh hợp lệ." });
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound(new { message = "Không tìm thấy người dùng." });
+
+            var folder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "avatars");
+            Directory.CreateDirectory(folder);
+
+            var fileName = $"{userId}_{Guid.NewGuid():N}{ext}";
+            var fullPath = Path.Combine(folder, fileName);
+            using (var stream = new FileStream(fullPath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            user.AvatarUrl = $"/uploads/avatars/{fileName}";
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                success = true,
+                message = "Đổi ảnh đại diện thành công.",
+                avatarUrl = user.AvatarUrl
+            });
         }
 
         public record UpdateProfileDto(string FullName, string Phone);
