@@ -24,6 +24,35 @@ namespace MedCare_Pharmacy.Controllers
                 .Include(o => o.OrderDetails)
                 .ThenInclude(d => d.Product)
                 .OrderByDescending(o => o.CreatedAt)
+                .Select(o => new
+                {
+                    o.Id,
+                    o.UserId,
+                    o.CustomerName,
+                    o.Phone,
+                    o.Address,
+                    o.OrderType,
+                    o.Status,
+                    o.PrescriptionUrl,
+                    o.TotalAmount,
+                    o.CreatedAt,
+                    orderDetails = o.OrderDetails.Select(d => new
+                    {
+                        d.Id,
+                        d.OrderId,
+                        d.ProductId,
+                        d.Quantity,
+                        d.UnitPrice,
+                        product = d.Product != null ? new
+                        {
+                            d.Product.Id,
+                            d.Product.Name,
+                            d.Product.Price,
+                            d.Product.ImageUrl,
+                            d.Product.Unit
+                        } : null
+                    }).ToList()
+                })
                 .ToListAsync();
 
             return Ok(orders);
@@ -123,6 +152,7 @@ namespace MedCare_Pharmacy.Controllers
 
             return Ok(new { success = true, message = "Đã cập nhật trạng thái đơn hàng!" });
         }
+
         // GET: api/orders/by-user?userId=5  (Khách hàng xem đơn của mình)
         [HttpGet("by-user")]
         public async Task<IActionResult> GetByUser([FromQuery] int? userId)
@@ -137,6 +167,26 @@ namespace MedCare_Pharmacy.Controllers
                 .ThenInclude(d => d.Product)
                 .Where(o => o.UserId == userId)
                 .OrderByDescending(o => o.CreatedAt)
+                .Select(o => new
+                {
+                    o.Id,
+                    o.UserId,
+                    o.CustomerName,
+                    o.Phone,
+                    o.Address,
+                    o.Status,
+                    o.TotalAmount,
+                    o.CreatedAt,
+                    o.PrescriptionUrl,
+                    OrderDetails = o.OrderDetails.Select(d => new
+                    {
+                        d.Id,
+                        d.ProductId,
+                        d.Quantity,
+                        d.UnitPrice,
+                        Product = d.Product != null ? new { d.Product.Id, d.Product.Name, d.Product.Price } : null
+                    }).ToList()
+                })
                 .ToListAsync();
 
             return Ok(orders);

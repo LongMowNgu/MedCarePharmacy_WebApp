@@ -57,5 +57,17 @@ namespace MedCare_Pharmacy.Controllers
         {
             return View();
         }
+
+        [HttpGet]
+        public IActionResult ForgotPassword()
+        {
+            return View(); // Sẽ render file ForgotPassword.cshtml trong Views/Customer/
+        }
+
+        [HttpGet]
+        public IActionResult Profile()
+        {
+            return View();
+        }
     }
 }

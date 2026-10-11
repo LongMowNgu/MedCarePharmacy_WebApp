@@ -1,0 +1,196 @@
+﻿@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thông tin tài khoản - MedCare</title>
+    <link rel="stylesheet" href="~/css/main.css">
+    <link rel="stylesheet" href="~/css/customer.css">
+</head>
+<body>
+    <header class="top-header">
+        <div class="top-bar">
+            <span>📍 Tìm nhà thuốc</span>
+            <a asp-controller="Customer" asp-action="Orders">Tra cứu đơn hàng</a>
+            <span>Hotline: 1800 0000</span>
+        </div>
+
+        <div class="main-header">
+            <a class="logo" asp-controller="Home" asp-action="Index">
+                <span>✚</span> MedCare
+            </a>
+
+            <form class="search-box" onsubmit="event.preventDefault(); location.href='@Url.Action("Products", "Customer")?q=' + encodeURIComponent(this.q.value)">
+                <input name="q" type="text" placeholder="Tìm kiếm thuốc, vitamin...">
+                <button type="submit">🔍</button>
+            </form>
+
+            <div class="header-actions">
+                <span id="authArea"></span>
+                <a asp-controller="Customer" asp-action="Cart" class="link-btn">
+                    🛒 Giỏ hàng <b id="cartCount">0</b>
+                </a>
+            </div>
+        </div>
+
+        <nav class="nav">
+            <a asp-controller="Home" asp-action="Index">Trang chủ</a>
+            <a asp-controller="Customer" asp-action="Products">Thuốc & Sản phẩm</a>
+            <a asp-controller="Customer" asp-action="Consultation">💬 Tư vấn trực tuyến</a>
+            <a asp-controller="Customer" asp-action="Prescription">Đơn thuốc</a>
+            <a asp-controller="Customer" asp-action="Orders">Đơn hàng</a>
+        </nav>
+    </header>
+
+    <main class="page-wrap">
+        <h1 style="margin-bottom:18px">👤 Quản lý tài khoản cá nhân</h1>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <!-- Panel Cập nhật thông tin cá nhân -->
+            <div class="panel" style="background: white; border: 1px solid #edf0f0; border-radius: 12px; padding: 22px;">
+                <h3 style="margin-bottom: 16px; font-size: 18px; color: #16352d;">Thông tin cá nhân</h3>
+                <form id="profileForm" onsubmit="handleUpdateProfile(event)">
+                    <div class="form-field" style="margin-bottom: 14px;">
+                        <label style="display:block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 6px;">Họ tên *</label>
+                        <input id="profileName" name="fullName" type="text" required style="width: 100%; border: 1px solid #dce3e3; border-radius: 8px; padding: 10px 12px;">
+                    </div>
+
+                    <div class="form-field" style="margin-bottom: 14px;">
+                        <label style="display:block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 6px;">Số điện thoại *</label>
+                        <input id="profilePhone" name="phone" type="tel" required style="width: 100%; border: 1px solid #dce3e3; border-radius: 8px; padding: 10px 12px;">
+                    </div>
+
+                    <div class="form-field" style="margin-bottom: 20px;">
+                        <label style="display:block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 6px;">Email đăng nhập</label>
+                        <input id="profileEmail" name="email" type="email" disabled style="width: 100%; border: 1px solid #dce3e3; border-radius: 8px; padding: 10px 12px; background: #f5f5f5; color: #667085;">
+                        <small style="color: #667085; font-size: 11px;">Email định danh không thể thay đổi trực tiếp.</small>
+                    </div>
+
+                    <button type="submit" class="primary-btn" style="width: 100%; padding: 12px;">Lưu thay đổi</button>
+                </form>
+            </div>
+
+            <!-- Panel Đổi mật khẩu -->
+            <div class="panel" style="background: white; border: 1px solid #edf0f0; border-radius: 12px; padding: 22px;">
+                <h3 style="margin-bottom: 16px; font-size: 18px; color: #16352d;">Đổi mật khẩu</h3>
+                <form id="passwordForm" onsubmit="handleChangePassword(event)">
+                    <div class="form-field" style="margin-bottom: 14px;">
+                        <label style="display:block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 6px;">Mật khẩu hiện tại *</label>
+                        <input name="currentPassword" type="password" required placeholder="••••••" style="width: 100%; border: 1px solid #dce3e3; border-radius: 8px; padding: 10px 12px;">
+                    </div>
+
+                    <div class="form-field" style="margin-bottom: 14px;">
+                        <label style="display:block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 6px;">Mật khẩu mới (tối thiểu 6 ký tự) *</label>
+                        <input name="newPassword" type="password" required minlength="6" placeholder="••••••" style="width: 100%; border: 1px solid #dce3e3; border-radius: 8px; padding: 10px 12px;">
+                    </div>
+
+                    <div class="form-field" style="margin-bottom: 20px;">
+                        <label style="display:block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 6px;">Xác nhận mật khẩu mới *</label>
+                        <input name="confirmPassword" type="password" required minlength="6" placeholder="••••••" style="width: 100%; border: 1px solid #dce3e3; border-radius: 8px; padding: 10px 12px;">
+                    </div>
+
+                    <button type="submit" class="btn" style="width: 100%; padding: 12px; background: #344054; color: white; border: none; border-radius: 8px; font-weight: 600;">Cập nhật mật khẩu</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="~/js/api.js"></script>
+    <script src="~/js/main.js"></script>
+    <script src="~/js/auth.js"></script>
+    <script src="~/js/cart.js"></script>
+    <script src="~/js/customer.js"></script>
+    <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                if (typeof updateCartCount === "function") updateCartCount();
+                if (typeof renderAuthArea === "function") renderAuthArea();
+
+                const user = typeof getCurrentUser === "function" ? getCurrentUser() : null;
+                if (user) {
+                    document.getElementById("profileName").value = user.name || user.fullName || "";
+                    document.getElementById("profilePhone").value = user.phone || "";
+                    document.getElementById("profileEmail").value = user.email || "";
+                } else {
+                    location.href = "/Customer/Login?next=/Customer/Profile";
+                }
+            });
+
+            async function handleUpdateProfile(e) {
+                e.preventDefault();
+                const fullName = document.getElementById("profileName").value.trim();
+                const phone = document.getElementById("profilePhone").value.trim();
+                const token = localStorage.getItem("medcare_token") || localStorage.getItem("token");
+
+                try {
+                    const response = await fetch('/api/auth/update-profile', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ fullName, phone })
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        const user = getCurrentUser();
+                        if (user) {
+                            user.name = fullName;
+                            user.phone = phone;
+                            localStorage.setItem("medcare_user", JSON.stringify(user));
+                        }
+                        if (typeof showToast === "function") showToast(result.message || "Cập nhật cơ sở dữ liệu thành công!", "success");
+                        if (typeof renderAuthArea === "function") renderAuthArea();
+                    } else {
+                        if (typeof showToast === "function") showToast(result.message || "Cập nhật thất bại", "error");
+                    }
+                } catch (err) {
+                    if (typeof showToast === "function") showToast("Lỗi kết nối đến máy chủ.", "error");
+                }
+            }
+
+            async function handleChangePassword(e) {
+                e.preventDefault();
+                const currentPassword = e.target.currentPassword.value;
+                const newPassword = e.target.newPassword.value;
+                const confirmPassword = e.target.confirmPassword.value;
+
+                if (newPassword !== confirmPassword) {
+                    if (typeof showToast === "function") showToast("Mật khẩu xác nhận mới không khớp!", "error");
+                    return;
+                }
+
+                const token = localStorage.getItem("medcare_token") || localStorage.getItem("token");
+
+                try {
+                    const response = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ currentPassword, newPassword })
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        if (typeof showToast === "function") showToast(result.message || "Đổi mật khẩu thành công!", "success");
+                        e.target.reset();
+                    } else {
+                        if (typeof showToast === "function") showToast(result.message || "Đổi mật khẩu thất bại", "error");
+                    }
+                } catch (err) {
+                    if (typeof showToast === "function") showToast("Lỗi kết nối đến máy chủ.", "error");
+                }
+            }
+    </script>
+</body>
+</html>

@@ -51,7 +51,7 @@ function clearCart() { saveCart([]); }
 
 function getCartTotals({ shipping = 30000, freeThreshold = 300000 } = {}) {
     const cart = getCart();
-    const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+    const subtotal = cart.reduce((s, i) => s + (i.price * i.quantity), 0);
     const fee = subtotal >= freeThreshold || subtotal === 0 ? 0 : shipping;
     return { subtotal, shipping: fee, total: subtotal + fee, count: cart.length };
 }

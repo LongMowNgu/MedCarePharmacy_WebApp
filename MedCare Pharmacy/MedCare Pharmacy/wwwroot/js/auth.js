@@ -70,6 +70,27 @@ function renderAuthArea() {
             </div>
         </div>
     `;
+
+    // Đã đăng nhập → hiện tên + dropdown menu có thêm link "Hồ sơ cá nhân"
+    el.innerHTML = `
+    <div class="user-menu">
+        <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)">
+            👤 ${escapeHtml(u.name || u.email)}
+            <span class="caret">▾</span>
+        </button>
+        <div class="user-dropdown" id="userDropdown">
+            <div class="ud-head">
+                <div class="ud-name">${escapeHtml(u.name || "Người dùng")}</div>
+                <div class="ud-email">${escapeHtml(u.email || "")}</div>
+                <span class="badge ${u.role === "admin" ? "danger" : u.role === "pharmacist" ? "warn" : "info"}" style="margin-top:6px;display:inline-block">${escapeHtml(u.role || "customer")}</span>
+            </div>
+            <a href="${dashboardHrefFor(u.role)}">Bảng điều khiển</a>
+            <a href="/Customer/Profile">👤 Hồ sơ cá nhân</a> <!-- 👈 Thêm dòng này vào -->
+            <a href="/Customer/Orders">🛒 Đơn hàng của tôi</a>
+            <a href="#" onclick="handleLogout(event)" class="danger">Đăng xuất</a>
+        </div>
+    </div>
+`;
 }
 
 /* ----- Bật/tắt dropdown ----- */
@@ -229,3 +250,5 @@ async function handleRegisterSubmit(e) {
         showToast(err.message || "Đăng ký thất bại", "error");
     }
 }
+
+

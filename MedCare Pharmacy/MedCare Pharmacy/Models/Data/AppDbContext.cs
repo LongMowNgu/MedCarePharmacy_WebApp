@@ -29,7 +29,7 @@ namespace MedCare_Pharmacy.Models.Data
             modelBuilder.Entity<Product>().ToTable("Product");
             modelBuilder.Entity<Supplier>().ToTable("Supplier");
             modelBuilder.Entity<User>().ToTable("User");
-
+            modelBuilder.Entity<Prescription>().ToTable("Prescription");
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
                 .IsUnique();
