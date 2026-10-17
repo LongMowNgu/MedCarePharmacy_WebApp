@@ -63,15 +63,19 @@ function renderPosGrid(data) {
 
     gridEl.innerHTML = data.map(p => {
         const stock = p.stockQuantity != null ? p.stockQuantity : 0;
-        const icon = p.imageUrl || "💊";
+        const imgUrl = (p.imageUrl || p.ImageUrl || "").trim();
+        const isPath = imgUrl.startsWith("/") || imgUrl.startsWith("http");
+        const iconHtml = isPath
+            ? `<img src="${escapeHtml(imgUrl)}" alt="" style="max-width:64px;max-height:64px;object-fit:contain" onerror="this.outerHTML='💊'">`
+            : `<span>${escapeHtml(imgUrl || "💊")}</span>`;
         const disabledCls = stock <= 0 ? " style=\"opacity:0.5;cursor:not-allowed\"" : "";
         return `
-        <div class="pos-card" onclick="posAdd(${p.id})"${disabledCls}>
-            <div class="ic">${icon}</div>
-            <div class="nm">${escapeHtml(p.name)}</div>
-            <div class="pr">${formatPrice(p.price)}</div>
-            <div class="st">Tồn: ${stock}</div>
-        </div>`;
+    <div class="pos-card" onclick="posAdd(${p.id})"${disabledCls}>
+        <div class="ic">${iconHtml}</div>
+        <div class="nm">${escapeHtml(p.name)}</div>
+        <div class="pr">${formatPrice(p.price)}</div>
+        <div class="st">Tồn: ${stock}</div>
+    </div>`;
     }).join("");
 }
 

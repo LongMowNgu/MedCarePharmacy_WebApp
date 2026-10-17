@@ -128,6 +128,7 @@ function initMedicinesPage() {
         const catVal = document.getElementById("mCat").value;
         const supVal = document.getElementById("mSupplier").value;
 
+        const existing = id ? productsCache.find(x => x.id === id) : null;
         const body = {
             id: id || 0,
             name: name,
@@ -136,7 +137,7 @@ function initMedicinesPage() {
             stockQuantity: stock,
             unit: document.getElementById("mUnit").value.trim() || "Hộp",
             description: document.getElementById("mDesc").value.trim() || "",
-            imageUrl: "💊",
+            imageUrl: (existing && existing.imageUrl) ? existing.imageUrl : "",
             categoryId: catVal ? parseInt(catVal, 10) : null,
             supplierId: supVal ? parseInt(supVal, 10) : null
         };
