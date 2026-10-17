@@ -69,54 +69,87 @@ const LS = {
     remove(key) { localStorage.removeItem(key); }
 };
 
-/* --------- Danh mục dùng chung --------- */
+/* --------- Danh mục dùng chung (khớp Category.Name trong DB) --------- */
 const CATEGORIES = [
-    { id: "Thuốc", icon: "💊" },
-    { id: "Vitamin", icon: "🍊" },
-    { id: "Dược mỹ phẩm", icon: "🧴" },
-    { id: "Thiết bị y tế", icon: "🩺" },
-    { id: "Chăm sóc cá nhân", icon: "🧼" },
-    { id: "Mẹ & Bé", icon: "👶" }
+    { id: "Sơ cứu", icon: "🩹" },
+    { id: "Dị ứng", icon: "🤧" },
+    { id: "Chăm sóc da", icon: "🧴" },
+    { id: "Chăm sóc sức khỏe", icon: "💪" },
+    { id: "Vitamin và khoáng chất", icon: "🍊" },
+    { id: "Tiêu hóa", icon: "🫁" },
+    { id: "Thuốc giảm đau", icon: "💊" },
+    { id: "Tai mũi họng", icon: "👂" }
 ];
 
-/* --------- Sản phẩm demo (dùng chung khi chưa có backend) --------- */
-const DEMO_PRODUCTS = [
-    { id: 1, name: "Paracetamol 500mg", category: "Thuốc", active: "Paracetamol", price: 25000, stock: 120, icon: "💊", rating: 4.9, unit: "Hộp", supplier: "NCC Dược Hậu Giang", desc: "Giảm đau, hạ sốt." },
-    { id: 2, name: "Vitamin C 500mg", category: "Vitamin", active: "Acid ascorbic", price: 60000, stock: 85, icon: "🍊", rating: 4.8, unit: "Hộp", supplier: "NCC Vitamin VN", desc: "Bổ sung vitamin C, tăng đề kháng." },
-    { id: 3, name: "Nhiệt kế điện tử", category: "Thiết bị y tế", active: "—", price: 85000, stock: 30, icon: "🌡️", rating: 4.7, unit: "Cái", supplier: "NCC Thiết bị y tế", desc: "Đo nhiệt độ cơ thể nhanh, chính xác." },
-    { id: 4, name: "Kem dưỡng ẩm", category: "Dược mỹ phẩm", active: "Glycerin", price: 145000, stock: 45, icon: "🧴", rating: 4.8, unit: "Tuýp", supplier: "NCC Mỹ phẩm", desc: "Dưỡng ẩm cho da khô." },
-    { id: 5, name: "Nước rửa tay", category: "Chăm sóc cá nhân", active: "—", price: 42000, stock: 0, icon: "🧼", rating: 4.6, unit: "Chai", supplier: "NCC Gia dụng", desc: "Sát khuẩn tay nhanh." },
-    { id: 6, name: "Siro ho trẻ em", category: "Mẹ & Bé", active: "Cao lá thường xuân", price: 95000, stock: 22, icon: "🍼", rating: 4.9, unit: "Chai", supplier: "NCC Mẹ & Bé", desc: "Giảm ho cho trẻ từ 2 tuổi." },
-    { id: 7, name: "Băng cá nhân", category: "Thiết bị y tế", active: "—", price: 18000, stock: 200, icon: "🩹", rating: 4.7, unit: "Hộp", supplier: "NCC Y tế A", desc: "Băng vết thương nhỏ." },
-    { id: 8, name: "Omega 3", category: "Vitamin", active: "Omega 3-6-9", price: 220000, stock: 12, icon: "💚", rating: 4.8, unit: "Hộp", supplier: "NCC Vitamin VN", desc: "Hỗ trợ tim mạch, não bộ." }
-];
-
-/* --------- Sản phẩm demo cho trang chủ --------- */
-function renderHomeProducts() {
+/* --------- Sản phẩm nổi bật trang chủ (lấy từ API thật, không dùng demo) --------- */
+async function renderHomeProducts() {
     const listEl = document.getElementById("productList");
     if (!listEl) return;
 
-    const sortEl = document.getElementById("sortSelect");
-    let data = [...DEMO_PRODUCTS];
+    listEl.innerHTML = `<p class="empty">Đang tải sản phẩm nổi bật...</p>`;
 
-    if (sortEl) {
-        if (sortEl.value === "low") data.sort((a, b) => a.price - b.price);
-        if (sortEl.value === "high") data.sort((a, b) => b.price - a.price);
+    try {
+        const endpoint = (typeof API !== "undefined" && API.PRODUCTS) ? API.PRODUCTS : "/products";
+        let products = await apiGet(endpoint);
+        if (!Array.isArray(products)) products = [];
+
+        products = products
+            .filter(p => {
+                const img = p.imageUrl || p.ImageUrl || "";
+                const stock = p.stockQuantity ?? p.StockQuantity ?? 0;
+                return img && stock > 0;
+            })
+            .sort((a, b) => (a.id ?? a.Id) - (b.id ?? b.Id))
+            .slice(0, 8);
+
+        if (!products.length) {
+            listEl.innerHTML = `<p class="empty">Chưa có sản phẩm nổi bật phù hợp.</p>`;
+            return;
+        }
+
+        const sortEl = document.getElementById("sortSelect");
+        if (sortEl) {
+            if (sortEl.value === "low") products.sort((a, b) => (a.price ?? a.Price) - (b.price ?? b.Price));
+            if (sortEl.value === "high") products.sort((a, b) => (b.price ?? b.Price) - (a.price ?? a.Price));
+        }
+
+        listEl.innerHTML = products.map(p => {
+            const id = p.id ?? p.Id;
+            const name = p.name ?? p.Name ?? "";
+            const price = p.price ?? p.Price ?? 0;
+            const stock = p.stockQuantity ?? p.StockQuantity ?? 0;
+            const unit = p.unit ?? p.Unit ?? "Hộp";
+            const catName = (p.category && (p.category.name || p.category.Name)) || "—";
+            const img = p.imageUrl || p.ImageUrl || "";
+            const imgHtml = img
+                ? `<img src="${escapeHtml(img)}" alt="${escapeHtml(name)}" style="max-width:100%;max-height:120px;object-fit:contain" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span style="display:none;font-size:2rem;align-items:center;justify-content:center;height:100%">💊</span>`
+                : `<span style="font-size:2rem">💊</span>`;
+
+            return `
+            <article class="product" data-product-id="${id}" style="cursor:pointer">
+                <div class="product-image">${imgHtml}</div>
+                <div class="product-body">
+                    <span class="product-category">${escapeHtml(catName)}</span>
+                    <h3>${escapeHtml(name)}</h3>
+                    <div class="price">${formatPrice(price)}</div>
+                    <div class="text-muted" style="font-size:12px;margin-bottom:8px">Tồn: ${stock} ${escapeHtml(unit)}</div>
+                    <button class="add-cart" onclick="event.stopPropagation(); typeof addToCartFromApi==='function' && addToCartFromApi(${id}, '${escapeHtml(name).replace(/'/g, "\\'")}', ${price}, '${escapeHtml(unit)}', '${escapeHtml(img)}', ${stock})">
+                        Thêm vào giỏ
+                    </button>
+                </div>
+            </article>`;
+        }).join("");
+
+        listEl.querySelectorAll("article.product").forEach(el => {
+            el.addEventListener("click", (e) => {
+                if (e.target.closest("button, a")) return;
+                const pid = el.getAttribute("data-product-id");
+                if (pid && typeof openProductPopup === "function") openProductPopup(parseInt(pid, 10));
+            });
+        });
+    } catch (err) {
+        listEl.innerHTML = `<p class="empty">Không tải được sản phẩm: ${escapeHtml(err.message || "Lỗi")}</p>`;
     }
-    data = data.slice(0, 8);
-
-    listEl.innerHTML = data.map(p => `
-        <article class="product">
-            <div class="product-image">${p.icon}</div>
-            <div class="product-body">
-                <span class="product-category">${escapeHtml(p.category)}</span>
-                <h3>${escapeHtml(p.name)}</h3>
-                <div class="rating">★ ${p.rating}</div>
-                <div class="price">${formatPrice(p.price)}</div>
-                <button class="add-cart" onclick="addToCart(${p.id})">Thêm vào giỏ</button>
-            </div>
-        </article>
-    `).join("");
 }
 
 /* ---------- Modal dùng chung ---------- */
@@ -168,70 +201,41 @@ function closeModal() {
 
         async function search(q) {
             const reqId = ++lastReq;
-            if (!q) {
-                hide();
-                return;
-            }
             showLoading();
             try {
-                const endpoint = (typeof API !== "undefined" && API.PRODUCTS)
-                    ? API.PRODUCTS
-                    : "/products";
-                const list = await apiGet(`${endpoint}?q=${encodeURIComponent(q)}`);
+                const endpoint = (typeof API !== "undefined" && API.PRODUCTS) ? API.PRODUCTS : "/products";
+                const products = await apiGet(endpoint + "?q=" + encodeURIComponent(q));
                 if (reqId !== lastReq) return;
-
-                if (!list || !list.length) {
-                    box.innerHTML = `<div class="search-suggest-item muted">Không tìm thấy sản phẩm.</div>`;
-                    box.classList.add("show");
+                if (!products || !products.length) {
+                    box.innerHTML = `<div class="search-suggest-item muted">Không có kết quả</div>`;
                     return;
                 }
-
-                box.innerHTML = list.slice(0, 8).map(p => {
-                    const name = p.name || "";
-                    const price = p.price != null ? formatPrice(p.price) : "";
-                    const img = p.imageUrl && String(p.imageUrl).trim()
-                        ? `<img class="search-suggest-thumb" src="${escapeHtml(p.imageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'💊',className:'search-suggest-icon'}))">`
-                        : `<span class="search-suggest-icon">💊</span>`;
-                    return `
-                        <a class="search-suggest-item" href="/Customer/ProductDetail?id=${p.id}" role="option">
-                            ${img}
-                            <div class="search-suggest-text">
-                                <div class="search-suggest-name">${escapeHtml(name)}</div>
-                                <div class="search-suggest-price">${escapeHtml(price)}</div>
-                            </div>
-                        </a>`;
+                box.innerHTML = products.slice(0, 8).map(p => {
+                    const id = p.id ?? p.Id;
+                    const name = p.name ?? p.Name ?? "";
+                    return `<div class="search-suggest-item" role="option" data-id="${id}" data-name="${escapeHtml(name)}">${escapeHtml(name)}</div>`;
                 }).join("");
-                box.classList.add("show");
-            } catch (err) {
-                if (reqId !== lastReq) return;
-                box.innerHTML = `<div class="search-suggest-item muted">Lỗi kết nối. Thử lại sau.</div>`;
-                box.classList.add("show");
+                box.querySelectorAll(".search-suggest-item[data-id]").forEach(el => {
+                    el.addEventListener("click", () => {
+                        location.href = "/Customer/ProductDetail?id=" + el.getAttribute("data-id");
+                    });
+                });
+            } catch {
+                if (reqId === lastReq) box.innerHTML = `<div class="search-suggest-item muted">Lỗi tìm kiếm</div>`;
             }
         }
 
         input.addEventListener("input", () => {
             clearTimeout(timer);
-            const q = (input.value || "").trim();
-            if (q.length < 1) {
-                hide();
-                return;
-            }
-            timer = setTimeout(() => search(q), 300);
+            const q = input.value.trim();
+            if (q.length < 2) { hide(); return; }
+            timer = setTimeout(() => search(q), 280);
         });
-
-        input.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") hide();
-        });
-
-        document.addEventListener("click", (e) => {
-            if (e.target === input || box.contains(e.target)) return;
-            hide();
+        input.addEventListener("blur", () => setTimeout(hide, 200));
+        input.addEventListener("focus", () => {
+            if (input.value.trim().length >= 2) box.classList.add("show");
         });
     }
-
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", setup);
-    } else {
-        setup();
-    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setup);
+    else setup();
 })();

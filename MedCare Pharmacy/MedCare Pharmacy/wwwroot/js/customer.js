@@ -66,12 +66,15 @@ function initProductsPage() {
                 const categoryName = (p.category && p.category.name) ? p.category.name : (p.category || "—");
                 const active = p.activeIngredient || "—";
                 const stock = p.stockQuantity != null ? p.stockQuantity : 0;
-                const icon = p.imageUrl || "💊";
+                const img = p.imageUrl || "";
                 const unit = p.unit || "Hộp";
+                const imgHtml = img
+                    ? `<img src="${escapeHtml(img)}" alt="${escapeHtml(p.name)}" style="max-width:100%;max-height:120px;object-fit:contain" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span style="display:none;font-size:2rem;align-items:center;justify-content:center;height:100%">💊</span>`
+                    : `<span style="font-size:2rem">💊</span>`;
 
                 return `
-                <article class="product">
-                    <div class="product-image">${icon}</div>
+                <article class="product" data-product-id="${p.id}" style="cursor:pointer">
+                    <div class="product-image">${imgHtml}</div>
                     <div class="product-body">
                         <span class="product-category">${escapeHtml(categoryName)}</span>
                         <h3>${escapeHtml(p.name)}</h3>
@@ -81,10 +84,10 @@ function initProductsPage() {
                             Tồn kho: ${stock > 0 ? stock + " " + unit : "Hết hàng"}
                         </div>
                         <div style="display:flex;gap:6px">
-                            <a class="btn ghost small" style="flex:1;text-align:center;text-decoration:none"
-                               href="/Customer/ProductDetail?id=${p.id}">Xem</a>
+                            <button class="btn ghost small" style="flex:1"
+                                    onclick="event.stopPropagation(); openProductPopup(${p.id})">Chi tiết</button>
                             <button class="add-cart" style="flex:1"
-                                    onclick="addToCartFromApi(${p.id}, '${escapeHtml(p.name).replace(/'/g, "\\'")}', ${p.price}, '${escapeHtml(unit)}', '${icon}', ${stock})"
+                                    onclick="event.stopPropagation(); addToCartFromApi(${p.id}, '${escapeHtml(p.name).replace(/'/g, "\\'")}', ${p.price}, '${escapeHtml(unit)}', '${escapeHtml(img)}', ${stock})"
                                     ${stock === 0 ? "disabled" : ""}>
                                 ${stock === 0 ? "Hết hàng" : "Thêm giỏ"}
                             </button>
@@ -92,6 +95,15 @@ function initProductsPage() {
                     </div>
                 </article>`;
             }).join("");
+
+            // Click vào thẻ sản phẩm mở popup chi tiết
+            listEl.querySelectorAll("article.product").forEach(el => {
+                el.addEventListener("click", (e) => {
+                    if (e.target.closest("button, a")) return;
+                    const pid = el.getAttribute("data-product-id");
+                    if (pid) openProductPopup(parseInt(pid, 10));
+                });
+            });
         } catch (err) {
             listEl.innerHTML = `<p class="empty">Lỗi tải sản phẩm: ${escapeHtml(err.message || "Không xác định")}</p>`;
             showToast(err.message || "Không tải được danh sách sản phẩm", "error");
@@ -454,6 +466,97 @@ function initPrescriptionPage() {
     }
 
     loadAndRender();
+}
+
+
+/* ---------- Cửa sổ nổi thông tin thuốc ---------- */
+async function openProductPopup(productId) {
+    if (!productId) return;
+
+    let overlay = document.getElementById("productPopupOverlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "productPopupOverlay";
+        overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:16px;";
+        document.body.appendChild(overlay);
+    }
+
+    overlay.innerHTML = `<div id="productPopup" style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25);position:relative;">
+        <p style="text-align:center;color:#666">Đang tải thông tin thuốc...</p>
+    </div>`;
+    overlay.style.display = "flex";
+
+    const popup = document.getElementById("productPopup");
+
+    let leaveTimer = null;
+    const scheduleClose = () => {
+        clearTimeout(leaveTimer);
+        leaveTimer = setTimeout(() => { overlay.style.display = "none"; }, 180);
+    };
+    const cancelClose = () => clearTimeout(leaveTimer);
+
+    popup.addEventListener("mouseenter", cancelClose);
+    popup.addEventListener("mouseleave", scheduleClose);
+    overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) overlay.style.display = "none";
+    });
+    overlay.addEventListener("touchstart", (e) => {
+        if (e.target === overlay) overlay.style.display = "none";
+    }, { passive: true });
+
+    try {
+        const endpoint = (typeof API !== "undefined" && API.PRODUCTS) ? API.PRODUCTS : "/products";
+        const p = await apiGet(endpoint + "/" + productId);
+        if (!p) {
+            popup.innerHTML = `<p>Không tìm thấy sản phẩm.</p><button class="btn muted" onclick="document.getElementById('productPopupOverlay').style.display='none'">Đóng</button>`;
+            return;
+        }
+
+        const id = p.id ?? p.Id;
+        const name = p.name ?? p.Name ?? "—";
+        const active = p.activeIngredient ?? p.ActiveIngredient ?? "—";
+        const price = p.price ?? p.Price ?? 0;
+        const stock = p.stockQuantity ?? p.StockQuantity ?? 0;
+        const unit = p.unit ?? p.Unit ?? "Hộp";
+        const desc = p.description ?? p.Description ?? "—";
+        const img = p.imageUrl ?? p.ImageUrl ?? "";
+        const catName = (p.category && (p.category.name || p.category.Name)) || "—";
+        const supName = (p.supplier && (p.supplier.name || p.supplier.Name)) || "—";
+
+        const imgHtml = img
+            ? `<img src="${escapeHtml(img)}" alt="${escapeHtml(name)}" style="max-width:160px;max-height:160px;object-fit:contain;display:block;margin:0 auto 12px" onerror="this.outerHTML='<div style=font-size:3rem;text-align:center>💊</div>'">`
+            : `<div style="font-size:3rem;text-align:center;margin-bottom:12px">💊</div>`;
+
+        popup.innerHTML = `
+            <button type="button" aria-label="Đóng" onclick="document.getElementById('productPopupOverlay').style.display='none'"
+                style="position:absolute;top:10px;right:12px;border:none;background:transparent;font-size:1.4rem;cursor:pointer;line-height:1">&times;</button>
+            ${imgHtml}
+            <h2 style="margin:0 0 8px;font-size:1.25rem;text-align:center">${escapeHtml(name)}</h2>
+            <table style="width:100%;font-size:14px;border-collapse:collapse;margin-bottom:14px">
+                <tr><td style="padding:4px 8px;color:#666;width:40%">Mã thuốc</td><td style="padding:4px 8px"><strong>#${id}</strong></td></tr>
+                <tr><td style="padding:4px 8px;color:#666">Hoạt chất</td><td style="padding:4px 8px">${escapeHtml(active)}</td></tr>
+                <tr><td style="padding:4px 8px;color:#666">Giá bán</td><td style="padding:4px 8px"><strong style="color:#0d6e4f">${formatPrice(price)}</strong></td></tr>
+                <tr><td style="padding:4px 8px;color:#666">Tồn kho</td><td style="padding:4px 8px">${stock} ${escapeHtml(unit)}</td></tr>
+                <tr><td style="padding:4px 8px;color:#666">Đơn vị</td><td style="padding:4px 8px">${escapeHtml(unit)}</td></tr>
+                <tr><td style="padding:4px 8px;color:#666">Danh mục</td><td style="padding:4px 8px">${escapeHtml(catName)}</td></tr>
+                <tr><td style="padding:4px 8px;color:#666">Nhà cung cấp</td><td style="padding:4px 8px">${escapeHtml(supName)}</td></tr>
+                <tr><td style="padding:4px 8px;color:#666;vertical-align:top">Mô tả</td><td style="padding:4px 8px">${escapeHtml(desc)}</td></tr>
+            </table>
+            <div style="display:flex;gap:8px;justify-content:center">
+                <button class="add-cart" ${stock <= 0 ? "disabled" : ""}
+                    onclick="event.stopPropagation(); addToCartFromApi(${id}, '${escapeHtml(name).replace(/'/g, "\\\\'")}', ${price}, '${escapeHtml(unit)}', '${escapeHtml(img)}', ${stock}); document.getElementById('productPopupOverlay').style.display='none';">
+                    ${stock <= 0 ? "Hết hàng" : "Thêm vào giỏ hàng"}
+                </button>
+                <button class="btn muted" onclick="document.getElementById('productPopupOverlay').style.display='none'">Đóng</button>
+            </div>
+        `;
+
+        popup.addEventListener("mouseenter", cancelClose);
+        popup.addEventListener("mouseleave", scheduleClose);
+    } catch (err) {
+        popup.innerHTML = `<p>Lỗi tải thông tin: ${escapeHtml(err.message || "Không xác định")}</p>
+            <button class="btn muted" onclick="document.getElementById('productPopupOverlay').style.display='none'">Đóng</button>`;
+    }
 }
 
 /* ---------- bootstrap auto-detect page ---------- */

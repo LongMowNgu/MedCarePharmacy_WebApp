@@ -21,7 +21,7 @@ namespace MedCare_Pharmacy.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] string? q, [FromQuery] string? cat, [FromQuery] string? sort)
         {
-            var query = _context.Products.Include(p => p.Category).AsQueryable();
+            var query = _context.Products.Include(p => p.Category).Include(p => p.Supplier).AsQueryable();
 
             // Tìm kiếm từ khóa
             if (!string.IsNullOrEmpty(q))
@@ -54,7 +54,10 @@ namespace MedCare_Pharmacy.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var product = await _context.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id);
+            var product = await _context.Products
+                .Include(p => p.Category)
+                .Include(p => p.Supplier)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
             return Ok(product);
         }
