@@ -144,12 +144,19 @@ async function initProductDetailPage() {
         const categoryName = (p.category && p.category.name) ? p.category.name : "—";
         const active = p.activeIngredient || "—";
         const stock = p.stockQuantity != null ? p.stockQuantity : 0;
-        const icon = p.imageUrl || "💊";
+        const img = p.imageUrl || "";
         const unit = p.unit || "Hộp";
         const supplierName = (p.supplier && p.supplier.name) ? p.supplier.name : "—";
         const desc = p.description || "Đang cập nhật mô tả.";
 
-        document.getElementById("pdIcon").textContent = icon;
+        const pdIcon = document.getElementById("pdIcon");
+        if (pdIcon) {
+            if (img) {
+                pdIcon.innerHTML = `<img src="${escapeHtml(img)}" alt="${escapeHtml(p.name || "")}" style="max-width:100%;max-height:220px;object-fit:contain" onerror="this.parentElement.textContent='💊'">`;
+            } else {
+                pdIcon.textContent = "💊";
+            }
+        }
         document.getElementById("pdName").textContent = p.name;
         document.getElementById("pdCat").textContent = categoryName;
         document.getElementById("pdActive").textContent = active;
@@ -170,13 +177,13 @@ async function initProductDetailPage() {
 
         if (btnAdd) {
             btnAdd.onclick = () => {
-                addToCartFromApi(p.id, p.name, p.price, unit, icon, stock);
+                addToCartFromApi(p.id, p.name, p.price, unit, img, stock);
             };
             if (stock === 0) btnAdd.disabled = true;
         }
         if (btnBuy) {
             btnBuy.onclick = () => {
-                addToCartFromApi(p.id, p.name, p.price, unit, icon, stock);
+                addToCartFromApi(p.id, p.name, p.price, unit, img, stock);
                 setTimeout(() => location.href = "/Customer/Cart", 300);
             };
             if (stock === 0) btnBuy.disabled = true;
@@ -200,7 +207,7 @@ function initCartPage() {
         }
         wrap.innerHTML = cart.map(i => `
             <div class="cart-item" data-id="${i.id}">
-                <div class="thumb">${i.icon || "💊"}</div>
+                <div class="thumb">${(i.icon && (i.icon.startsWith("/") || i.icon.startsWith("http"))) ? `<img src="${escapeHtml(i.icon)}" alt="" style="max-width:56px;max-height:56px;object-fit:contain" onerror="this.parentElement.textContent='💊'">` : (i.icon || "💊")}</div>
                 <div>
                     <div style="font-weight:600">${escapeHtml(i.name)}</div>
                     <div class="text-muted" style="font-size:13px">${formatPrice(i.price)} / ${i.unit || "Hộp"}</div>
